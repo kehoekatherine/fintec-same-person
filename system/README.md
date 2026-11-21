@@ -69,6 +69,18 @@ For one resolved person the first matching ground wins:
 
 A country clash does not clear a hit whose name and date of birth already agree. That hit is a review. If no customer can be resolved, the hit is a review and `customer_record_id` is null.
 
+## Closeness
+
+A review or a confirmation still needs a person to accept it. Those hits include a closeness score: how near the compared identity facts are, out of 100. A cleared hit has the comparison and no score. The score uses only the name, date of birth, and country the decision already compared.
+
+| Fact | Agrees | Unsettled | Does not agree |
+| --- | --- | --- | --- |
+| Name | 40 | 15, when the name is missing or an individual name has fewer than two real parts | 0 |
+| Date of birth | 30 | 10, when a date is missing or the years are one apart | 0 |
+| Country | 30, when a country is shared | 10, when one side has no country | 0 |
+
+80–100 is Close, 40–79 is Partial, and 0–39 is Distant. Each compared fact is also recorded as Match, Different, or Undefined with the customer value and the hit value.
+
 When several people fit the alert and every comparison reaches the same decision, that decision is emitted and `customer_record_id` is `AMBIGUOUS`. When the comparisons disagree, the hit is a review with reason code `AMBIGUOUS_CUSTOMER_RECORD`.
 
 ## Evidence

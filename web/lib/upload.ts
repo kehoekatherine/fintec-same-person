@@ -2,10 +2,12 @@ import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { readCloseness, readComparison } from "@/lib/closeness";
 import { parseCsv, stableId } from "@/lib/csv";
 import { findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
+import { loadApplicableCodes } from "@/lib/grounds";
 import { customerPresence, loadPackIndex } from "@/lib/pack-index";
 import type { Decision, Resolution, ResultPayload, ResultRow } from "@/lib/types";
 import { displayFileName, isAcceptedExtension, MAX_UPLOAD_BYTES, uploadRejection } from "@/lib/upload-file";
@@ -105,7 +107,20 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
     notice: scored.joinedDev
       ? `system/run scored ${filename} against the development customers.jsonl. Customer ids come only from that file. These rows stay in this browser session and are not saved.`
       : `system/run scored ${filename} with the customers in that file. Customer ids are not invented. These rows stay in this browser session and are not saved.`,
-    rows: await markCustomers(scored.rows.map((row) => toResultRow(row, names.get(row.hit_id) ?? null))),
+    rows: await markCustomers(
+      scored.rows.map((row) => {
+        const applicable = scored.codes?.get(row.hit_id);
+        const customerId = row.customer_record_id;
+        return {
+          ...toResultRow(row, names.get(row.hit_id) ?? null),
+          groundsChecked: applicable != null,
+          applicableCodes: applicable ?? [],
+          customerMissing: scored.joinedDev
+            ? false
+            : Boolean(customerId && customerId !== "AMBIGUOUS" && !scored.customerIds.has(customerId)),
+        };
+      }),
+    ),
   };
 }
 
@@ -170,9 +185,19 @@ function bundleFrom(text: string, extension: "csv" | "json" | "jsonl"): HitBundl
   return { hits: [asHit(record, 0)], extras: {}, nameVariants: null };
 }
 
-async function scoreBundle(bundle: HitBundle): Promise<{ rows: Resolution[]; joinedDev: boolean }> {
+async function scoreBundle(bundle: HitBundle): Promise<{
+  rows: Resolution[];
+  joinedDev: boolean;
+  codes: Map<string, string[]> | null;
+  customerIds: Set<string>;
+}> {
   if (bundle.hits.length === 0) {
     throw new DeskError("The file has no hits to score.", { status: 400 });
+  }
+  const customerIds = new Set<string>();
+  for (const row of bundle.extras.customers ?? []) {
+    const id = stringOf(row.record_id);
+    if (id) customerIds.add(id);
   }
   const hitsOnly = (bundle.extras.customers?.length ?? 0) === 0;
   const pack = hitsOnly ? await findDevPack() : null;
@@ -207,7 +232,9 @@ async function scoreBundle(bundle: HitBundle): Promise<{ rows: Resolution[]; joi
     } else {
       await copyFile(await briefVariantsPath(), variantsPath);
     }
-    return { rows: await runEngineOn(dir, 180_000), joinedDev: Boolean(hitsOnly && pack) };
+    const rows = await runEngineOn(dir, 180_000);
+    const codes = await loadApplicableCodes(dir, 180_000);
+    return { rows, joinedDev: Boolean(hitsOnly && pack), codes, customerIds };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -379,6 +406,7 @@ function asResult(row: Record<string, unknown>, index: number): ResultRow {
   }
   const name = stringOf(row.name);
   const reason = stringOf(row.reason) ?? "";
+  const comparison = readComparison(row.comparison);
   return {
     hitId: stringOf(row.hit_id) ?? stableId("H", `${index}|${name ?? ""}|${decision}|${reason}`),
     alertId: stringOf(row.alert_id) ?? "",
@@ -388,10 +416,15 @@ function asResult(row: Record<string, unknown>, index: number): ResultRow {
     customerInFile: null,
     reason,
     evidence: evidenceOf(row.evidence),
+    comparison,
+    closeness: readCloseness(row.closeness, comparison, decision),
     name,
     listedName: stringOf(row.listed_name),
     customerDob: stringOf(row.customer_dob) ?? stringOf(row.dob),
     customerCountry: stringOf(row.customer_country) ?? stringOf(row.country),
+    groundsChecked: false,
+    applicableCodes: [],
+    customerMissing: false,
   };
 }
 
@@ -405,10 +438,15 @@ export function toResultRow(row: Resolution, name: string | null = null): Result
     customerInFile: null,
     reason: row.reason,
     evidence: row.evidence,
+    comparison: row.comparison,
+    closeness: row.closeness,
     name,
     listedName: null,
     customerDob: null,
     customerCountry: null,
+    groundsChecked: false,
+    applicableCodes: [],
+    customerMissing: false,
   };
 }
 

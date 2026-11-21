@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 
+import { ClosenessLine } from "@/components/case-assessment";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { sentences } from "@/lib/format";
 import { filterResults } from "@/lib/filter-results";
-import { DECISION_LABEL, FILTERS, reasonLabel } from "@/lib/labels";
+import { DECISION_LABEL, FILTERS } from "@/lib/labels";
 import type { FilterId, ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
@@ -19,22 +19,22 @@ export function ResultsTable({
   rows,
   query,
   filter,
+  activeHitId,
   onQuery,
   onFilter,
+  onOpen,
   onReset,
   caption,
-  detailNote,
-  renderDetail,
 }: {
   rows: ResultRow[];
   query: string;
   filter: FilterId;
+  activeHitId: string | null;
   onQuery: (query: string) => void;
   onFilter: (filter: FilterId) => void;
+  onOpen: (row: ResultRow) => void;
   onReset: () => void;
   caption: string;
-  detailNote: string;
-  renderDetail?: (row: ResultRow) => ReactNode;
 }) {
   const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
   const keyed = useMemo(
@@ -43,20 +43,17 @@ export function ResultsTable({
   );
   const scope = `${filter}\u0000${query}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
   const [page, setPage] = useState(1);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [pageScope, setPageScope] = useState(scope);
   if (pageScope !== scope) {
     setPageScope(scope);
     setPage(1);
-    setSelectedKey(null);
   }
 
   const pageCount = Math.max(1, Math.ceil(keyed.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * PAGE_SIZE;
   const visible = keyed.slice(start, start + PAGE_SIZE);
-  const selected = keyed.find((item) => item.key === selectedKey)?.row ?? null;
-  const showName = rows.some((row) => row.name);
+  const showName = rows.some((row) => row.name || row.listedName);
 
   return (
     <section className="grid gap-4" aria-label={caption} data-testid="results-table">
@@ -106,11 +103,12 @@ export function ResultsTable({
         <EmptyResults query={query} onReset={onReset} />
       ) : (
         <div className="border border-border bg-card">
-          <Table className="min-w-[46rem]">
+          <Table className="min-w-[56rem]">
             <TableCaption>{caption}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Decision</TableHead>
+                <TableHead>Closeness</TableHead>
                 {showName ? <TableHead>Customer name</TableHead> : null}
                 <TableHead>Hit</TableHead>
                 <TableHead>Alert</TableHead>
@@ -121,20 +119,21 @@ export function ResultsTable({
             </TableHeader>
             <TableBody>
               {visible.map((item) => {
-                const active = item.key === selectedKey;
+                const active = item.row.hitId === activeHitId;
                 return (
                   <TableRow
                     key={item.key}
                     data-testid={`result-${item.row.hitId}`}
                     data-selected={active ? "true" : "false"}
                     aria-selected={active}
+                    aria-haspopup="dialog"
                     tabIndex={0}
                     className={cn("cursor-pointer hover:bg-muted/80", active && "bg-muted")}
-                    onClick={() => setSelectedKey(item.key)}
+                    onClick={() => onOpen(item.row)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setSelectedKey(item.key);
+                        onOpen(item.row);
                       }
                     }}
                   >
@@ -142,6 +141,11 @@ export function ResultsTable({
                       <Badge className={cn("h-6 px-2", DECISION_BADGE[item.row.decision])}>
                         {DECISION_LABEL[item.row.decision]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-64">
+                      {item.row.closeness ? (
+                        <ClosenessLine closeness={item.row.closeness} testId={`closeness-${item.row.hitId}`} />
+                      ) : null}
                     </TableCell>
                     {showName ? (
                       <TableCell className="max-w-48">
@@ -157,7 +161,7 @@ export function ResultsTable({
                     <TableCell className="font-mono text-xs">{item.row.hitId}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.alertId || "Not given"}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.reasonCode || "Not given"}</TableCell>
-                    <TableCell className="font-mono text-xs">{customerLabel(item.row)}</TableCell>
+                    <TableCell className="font-mono text-xs">{customerCell(item.row)}</TableCell>
                     <TableCell className="max-w-md text-muted-foreground">
                       <span className="line-clamp-2">{item.row.reason || "No reason recorded."}</span>
                     </TableCell>
@@ -195,70 +199,14 @@ export function ResultsTable({
           </p>
         </div>
       ) : null}
-      {selected ? (
-        <div className="grid gap-3">
-          <ResultDetail row={selected} note={detailNote} />
-          {renderDetail ? renderDetail(selected) : null}
-        </div>
-      ) : null}
     </section>
   );
 }
 
-function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
-  const lines = sentences(row.reason || "No reason was recorded.");
-  return (
-    <article data-testid="result-detail" className="border-y border-r border-l-4 border-border border-l-primary bg-card px-5 py-5">
-      <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Selected row</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <h2 className="font-heading text-2xl">{row.name || row.listedName || row.hitId}</h2>
-        <Badge className={cn("h-6 px-2", DECISION_BADGE[row.decision])}>{DECISION_LABEL[row.decision]}</Badge>
-        {row.reasonCode ? (
-          <span className="font-mono text-xs text-muted-foreground">{row.reasonCode}</span>
-        ) : null}
-      </div>
-      {row.reasonCode ? <p className="mt-1 text-sm text-muted-foreground">{reasonLabel(row.reasonCode)}</p> : null}
-      <p className="mt-2 font-mono text-xs text-muted-foreground">
-        {row.hitId}
-        {row.alertId ? ` · ${row.alertId}` : ""} · {customerLabel(row)}
-      </p>
-      {row.listedName || row.customerDob || row.customerCountry ? (
-        <p className="mt-2 text-sm leading-6 text-foreground">
-          {row.listedName ? `Listed name ${row.listedName}` : null}
-          {row.customerDob ? `${row.listedName ? " · " : ""}Born ${row.customerDob}` : null}
-          {row.customerCountry ? ` · ${row.customerCountry}` : null}
-        </p>
-      ) : null}
-      <div className="mt-4 grid gap-3">
-        {lines.map((line) => (
-          <p key={line} className="text-base leading-7 text-foreground">
-            {line}
-          </p>
-        ))}
-      </div>
-      <div className="mt-4">
-        <h3 className="text-sm font-medium text-foreground">Evidence</h3>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{note}</p>
-        {row.evidence.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No evidence ids were recorded.</p>
-        ) : (
-          <ul className="mt-2 grid gap-1">
-            {row.evidence.map((id) => (
-              <li key={id} className="font-mono text-xs text-foreground">
-                {id}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function customerLabel(row: ResultRow): string {
+function customerCell(row: ResultRow): string {
   if (!row.customerRecordId) return "Not resolved";
   if (row.customerRecordId === "AMBIGUOUS") return "AMBIGUOUS";
-  if (row.customerInFile === false) return `${row.customerRecordId} is not in customers.jsonl`;
+  if (row.customerInFile === false || row.customerMissing) return `${row.customerRecordId} is not in customers.jsonl`;
   return row.customerRecordId;
 }
 

@@ -1,3 +1,4 @@
+import { ClosenessLine } from "@/components/case-assessment";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,7 @@ export function QueuePanel({
                     type="button"
                     variant={active ? "secondary" : "outline"}
                     aria-pressed={active}
+                    aria-haspopup="dialog"
                     data-testid={`hit-${item.hitId}`}
                     className={cn(
                       "h-auto min-h-16 w-full items-start justify-start gap-3 border-border px-3 py-3 text-left whitespace-normal",
@@ -97,6 +99,9 @@ export function QueuePanel({
                       <span className="font-mono text-xs leading-5 break-all text-muted-foreground">
                         {item.resolution.reason_code}
                       </span>
+                      {item.resolution.closeness ? (
+                        <ClosenessLine closeness={item.resolution.closeness} testId={`closeness-${item.hitId}`} />
+                      ) : null}
                       <span className="font-mono text-xs text-muted-foreground">
                         Fixture {item.resolution.customer_record_id ?? "no customer record"}
                       </span>

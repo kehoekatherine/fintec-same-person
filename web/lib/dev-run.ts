@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseCsv } from "@/lib/csv";
 import { findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
+import { loadApplicableCodes } from "@/lib/grounds";
 import { runEngineOn } from "@/lib/engine";
 import { customerPresence, loadPackIndex, type PackIndex } from "@/lib/pack-index";
 import { stringOf } from "@/lib/record-fields";
@@ -34,7 +35,8 @@ export async function loadDevelopmentRun(): Promise<ResultPayload> {
   }
   const index = await indexPromise;
   const confirmed = index ? new Map() : await loadConfirmedNames();
-  const rows = resolutions.map((row) => decorate(row, index, confirmed));
+  const codes = dir ? await loadApplicableCodes(dir, 120_000) : null;
+  const rows = resolutions.map((row) => decorate(row, index, confirmed, codes));
   return {
     source: "development",
     mode: fresh ? "scored" : "recorded",
@@ -47,8 +49,12 @@ function decorate(
   row: Resolution,
   index: PackIndex | null,
   confirmed: Map<string, Pick<ResultRow, "name" | "listedName" | "customerDob" | "customerCountry">>,
+  codes: Map<string, string[]> | null,
 ): ResultRow {
   const result = toResultRow(row);
+  const applicable = codes?.get(row.hit_id);
+  result.groundsChecked = applicable != null;
+  result.applicableCodes = applicable ?? [];
   result.customerInFile = customerPresence(index, result.customerRecordId);
   if (index) {
     const customer =

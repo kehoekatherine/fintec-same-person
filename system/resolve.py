@@ -153,7 +153,7 @@ def find_dates(text: str) -> list[tuple[int, int, Partial]]:
 
     for index, pattern in enumerate(patterns):
         for match in pattern.finditer(text):
-            if not free(match.start(), match.end()):
+            if not free(match.start(), match.end()) or hedged_before(text, match.start()):
                 continue
             parsed = _date_from_match(index, match)
             if parsed is None:
@@ -492,22 +492,33 @@ def split_sentences(text: str) -> list[str]:
     return [chunk.strip() for chunk in chunks if chunk.strip()]
 
 
+HEDGE_RE = re.compile(
+    r"(?:circa|c\.|ca\.|about|around|approximately|approx\.?|roughly|sometime|estimated|est\.)\s*$",
+    re.I,
+)
+
+
+def hedged_before(text: str, start: int) -> bool:
+    """A date or age with a hedge in front of it is not a fact."""
+    return bool(HEDGE_RE.search(text[max(0, start - 24):start]))
+
+
 def event_in(sentence: str) -> Partial | None:
-    match = re.search(rf"\b({MONTH_RE}) (\d{{1,2}}), (\d{{4}})\b", sentence, re.I)
-    if match:
-        return _partial(int(match.group(3)), MONTHS[match.group(1).lower()], int(match.group(2)))
-    match = re.search(rf"\b(\d{{1,2}}) ({MONTH_RE}) (\d{{4}})\b", sentence, re.I)
-    if match:
-        return _partial(int(match.group(3)), MONTHS[match.group(2).lower()], int(match.group(1)))
-    match = re.search(rf"\b({MONTH_RE}) (\d{{4}})\b", sentence, re.I)
-    if match:
-        return _partial(int(match.group(2)), MONTHS[match.group(1).lower()], None)
-    match = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", sentence)
-    if match:
-        return _partial(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    match = re.search(r"\b(?:in|during)\s+(\d{4})\b", sentence, re.I)
-    if match:
-        return Partial(int(match.group(1)))
+    patterns = (
+        (re.compile(rf"\b({MONTH_RE}) (\d{{1,2}}), (\d{{4}})\b", re.I), lambda match: _partial(int(match.group(3)), MONTHS[match.group(1).lower()], int(match.group(2)))),
+        (re.compile(rf"\b(\d{{1,2}}) ({MONTH_RE}) (\d{{4}})\b", re.I), lambda match: _partial(int(match.group(3)), MONTHS[match.group(2).lower()], int(match.group(1)))),
+        (re.compile(rf"\b({MONTH_RE}) (\d{{4}})\b", re.I), lambda match: _partial(int(match.group(2)), MONTHS[match.group(1).lower()], None)),
+        (re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b"), lambda match: _partial(int(match.group(1)), int(match.group(2)), int(match.group(3)))),
+        (re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b"), lambda match: parse_date(match.group(0))),
+        (re.compile(r"\b(?:in|during)\s+(\d{4})\b", re.I), lambda match: Partial(int(match.group(1)))),
+    )
+    for pattern, build in patterns:
+        for match in pattern.finditer(sentence):
+            if hedged_before(sentence, match.start()):
+                continue
+            parsed = build(match)
+            if parsed:
+                return parsed
     return None
 
 
@@ -523,12 +534,12 @@ def age_in(sentence: str) -> int | None:
         r"\bwas\s+(\d{1,3})\b",
     )
     for pattern in patterns:
-        match = re.search(pattern, sentence, re.I)
-        if not match:
-            continue
-        age = int(match.group(1))
-        if 1 <= age <= 110:
-            return age
+        for match in re.finditer(pattern, sentence, re.I):
+            if hedged_before(sentence, match.start()):
+                continue
+            age = int(match.group(1))
+            if 1 <= age <= 110:
+                return age
     return None
 
 
@@ -762,7 +773,7 @@ def union_people(customers: dict[str, Customer], onboarding: list[dict], checks:
 def identity_from_note(note: dict, names: Names, company: bool) -> CheckFact | None:
     text = note.get("text") or ""
     lowered = text.lower()
-    if re.search(r"reject|failed|failure|expired|unsuccessful|does not match|did not match|unable to verify|could not verify|mismatch", lowered):
+    if re.search(r"reject|failed|failure|expired|unsuccessful|does not match|did not match|unable to verify|could not (?:be )?verif|not verified|mismatch", lowered):
         return None
     if not re.search(r"passport|driving licence|driving license|national id|identity|licence|license|document|registry", lowered):
         return None
@@ -818,7 +829,7 @@ def _note_name(text: str) -> str | None:
             cleaned.append(" ".join(words))
     if cleaned:
         return max(cleaned, key=len)
-    match = re.search(r"\b(?:name|holder)\s+([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,5})", text)
+    match = re.search(r"(?i:\b(?:name|holder)\s+)([A-Z][A-Za-z'’-]+(?:\s+[A-Z][A-Za-z'’-]+){1,5})", text)
     if match:
         return match.group(1)
     return None
@@ -1818,7 +1829,45 @@ def guard_clearance(outcome: Outcome, compared: tuple[str, str, str]) -> Outcome
     )
 
 
-def resolve(data: Path) -> list[dict]:
+def review_rate_lines(world: World, rows: list[dict]) -> list[str]:
+    """Review rate by customer country. A missing watchlist date stays a review.
+
+    The rate is a property of the data. It is not a score of the country.
+    """
+    hits = {hit["hit_id"]: hit for hit in world.hits}
+    buckets: dict[str, list[str]] = defaultdict(list)
+    missing_by_country: dict[str, int] = defaultdict(int)
+    reviews = 0
+    missing_dob = 0
+    for row in rows:
+        record = row.get("customer_record_id")
+        customer = world.customers.get(record) if isinstance(record, str) and record not in ("", "AMBIGUOUS") else None
+        country = customer.countries[0] if customer and customer.countries else "Unknown"
+        buckets[country].append(row["decision"])
+        if row["decision"] != "REVIEW":
+            continue
+        reviews += 1
+        hit = hits.get(row["hit_id"], {})
+        if not hit.get("dobs"):
+            missing_dob += 1
+            missing_by_country[country] += 1
+    lines = [
+        "Review rate by customer country, for countries with at least 20 screened customers.",
+        "A missing watchlist date stays a review. The rate is not a score of the country.",
+    ]
+    for country in sorted(buckets):
+        decisions = buckets[country]
+        if len(decisions) < 20:
+            continue
+        review = sum(item == "REVIEW" for item in decisions)
+        lines.append(
+            f"{display_country(country)}: {review} of {len(decisions)} reviews ({review / len(decisions):.1%}), {missing_by_country[country]} with no watchlist date of birth"
+        )
+    lines.append(f"Reviews whose watchlist entry has no date of birth: {missing_dob} of {reviews}.")
+    return lines
+
+
+def resolve(data: Path) -> tuple[World, list[dict]]:
     world = World(data)
     rows = []
     for hit in world.hits:
@@ -1837,7 +1886,7 @@ def resolve(data: Path) -> list[dict]:
         if outcome.closeness is not None:
             row["closeness"] = outcome.closeness
         rows.append(row)
-    return rows
+    return world, rows
 
 
 def main() -> None:
@@ -1847,13 +1896,15 @@ def main() -> None:
     data = Path(sys.argv[1])
     output = Path(sys.argv[2])
     started = time.perf_counter()
-    rows = resolve(data)
+    world, rows = resolve(data)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as handle:
         for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
     elapsed = time.perf_counter() - started
     print(f"wrote {len(rows)} hits to {output} in {elapsed:.1f}s", file=sys.stderr)
+    for line in review_rate_lines(world, rows):
+        print(line, file=sys.stderr)
 
 
 if __name__ == "__main__":

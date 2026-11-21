@@ -101,6 +101,22 @@ python3 validate.py --data <data folder> --output output/dev.jsonl --score <data
 
 How a customer is resolved, how a hit is read, and how evidence is chosen is described in [system/README.md](system/README.md).
 
+## Questions a reviewer asks
+
+These are the answers the program can stand behind. `python3 system/stress.py` checks the readers, a later married name, and that two full runs are byte-identical. On this machine the development run of 819 hits takes about 8 seconds and makes no network call.
+
+**Why not let the model decide?** A wrongful clearance costs 60 points, and in a bank it lets a sanctioned person through. The decision is a fixed rule. With no `OPENROUTER_API_KEY`, nothing is sent. With a key, the model is asked only about a clearance, at temperature 0, and the answer is cached by the text. It can turn that clearance into a review. It cannot create a clearance, and it does not change a confirmation or a review.
+
+**How do the runs stay identical?** Inputs are sorted, the rule order is fixed, and each JSON line is written with sorted keys. Two runs with different `PYTHONHASHSEED` values write the same bytes. The model, when it is used, is a cached fallback and cannot clear a hit.
+
+**What if a customer changed their name, for example after marriage?** The most recent approved identity check is the legal name. A hit that matches only the older name on the customer file is a different person (`NAME_MISMATCH_VERIFIED`). A hit that matches the later approved name can be confirmed. A real bank would also record a documented name change as an alias. This data does not.
+
+**How do you handle bias?** Every run prints the review rate by customer country. On this development set, United States customers are reviewed 39 of 243 times (16.0%) and Nigerian customers 60 of 115 times (52.2%). 57 of those 60 Nigerian reviews are watchlist entries with no date of birth. The gap is in the data. A missing date stays a review. The rate is not a score of the country, and the bar is not lowered to close the gap.
+
+**What if the data is missing or messy?** A missing field is not a mismatch. A hedged date, such as "circa 1974" or "about 40 years old", is not a fact. Those hits stay in review, and the reason says what could not be compared.
+
+**How was the unseen set tested?** Beyond the 50 practice answers, `system/stress.py` rewords identity notes and profile dates. That is what caught a US-format date in a profile (`6/20/1955`). The practice set is still 50 right decisions and 0 unsafe clearances.
+
 ## Try it
 
 The screening desk is a Next.js app in `web/`. It shows the development run. It is not a live watchlist.
@@ -115,4 +131,4 @@ npm run dev
 
 The dev server listens on port 4317. Open http://127.0.0.1:4317
 
-`system/run` is unchanged. It still uses only the Python standard library, reads a data folder, and writes one JSON line per hit. Pass absolute paths. The `system/run` script changes into `system/` before it reads the folder.
+`system/run` still uses only the Python standard library for the decision. Pass absolute paths. The script changes into `system/` before it reads the folder. Every run prints the review rate by customer country.

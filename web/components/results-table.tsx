@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { sentences } from "@/lib/format";
+import { CaseComparison } from "@/components/case-comparison";
+import { comparisonFromRow } from "@/lib/comparison";
 import { filterResults } from "@/lib/filter-results";
-import { DECISION_LABEL, FILTERS, reasonLabel } from "@/lib/labels";
+import { DECISION_LABEL, FILTERS } from "@/lib/labels";
 import type { FilterId, ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
@@ -23,7 +24,8 @@ export function ResultsTable({
   onFilter,
   onReset,
   caption,
-  detailNote,
+  rechecked,
+  absentCustomerIds,
 }: {
   rows: ResultRow[];
   query: string;
@@ -32,7 +34,8 @@ export function ResultsTable({
   onFilter: (filter: FilterId) => void;
   onReset: () => void;
   caption: string;
-  detailNote: string;
+  rechecked: boolean;
+  absentCustomerIds: readonly string[] | null;
 }) {
   const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
   const keyed = useMemo(
@@ -195,56 +198,32 @@ export function ResultsTable({
           </p>
         </div>
       ) : null}
-      {selected ? <ResultDetail row={selected} note={detailNote} /> : null}
+      {selected ? (
+        <ResultDetail row={selected} rechecked={rechecked} absentCustomerIds={absentCustomerIds} />
+      ) : null}
     </section>
   );
 }
 
-function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
-  const lines = sentences(row.reason || "No reason was recorded.");
+function ResultDetail({
+  row,
+  rechecked,
+  absentCustomerIds,
+}: {
+  row: ResultRow;
+  rechecked: boolean;
+  absentCustomerIds: readonly string[] | null;
+}) {
+  const model = comparisonFromRow(row, { rechecked, absentCustomerIds });
   return (
-    <article data-testid="result-detail" className="border-y border-r border-l-4 border-border border-l-primary bg-card px-5 py-5">
+    <article data-testid="result-detail" className="border border-border bg-card px-5 py-5">
       <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Selected row</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <h2 className="font-heading text-2xl">{row.name || row.listedName || row.hitId}</h2>
-        <Badge className={cn("h-6 px-2", DECISION_BADGE[row.decision])}>{DECISION_LABEL[row.decision]}</Badge>
-        {row.reasonCode ? (
-          <span className="font-mono text-xs text-muted-foreground">{row.reasonCode}</span>
-        ) : null}
-      </div>
-      {row.reasonCode ? <p className="mt-1 text-sm text-muted-foreground">{reasonLabel(row.reasonCode)}</p> : null}
       <p className="mt-2 font-mono text-xs text-muted-foreground">
         {row.hitId}
-        {row.alertId ? ` · ${row.alertId}` : ""} · Customer {row.customerRecordId ?? "not resolved"}
+        {row.alertId ? ` · ${row.alertId}` : ""}
       </p>
-      {row.listedName || row.customerDob || row.customerCountry ? (
-        <p className="mt-2 text-sm leading-6 text-foreground">
-          {row.listedName ? `Listed name ${row.listedName}` : null}
-          {row.customerDob ? `${row.listedName ? " · " : ""}Born ${row.customerDob}` : null}
-          {row.customerCountry ? ` · ${row.customerCountry}` : null}
-        </p>
-      ) : null}
-      <div className="mt-4 grid gap-3">
-        {lines.map((line) => (
-          <p key={line} className="text-base leading-7 text-foreground">
-            {line}
-          </p>
-        ))}
-      </div>
-      <div className="mt-4">
-        <h3 className="text-sm font-medium text-foreground">Evidence</h3>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{note}</p>
-        {row.evidence.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No evidence ids were recorded.</p>
-        ) : (
-          <ul className="mt-2 grid gap-1">
-            {row.evidence.map((id) => (
-              <li key={id} className="font-mono text-xs text-foreground">
-                {id}
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="mt-5">
+        <CaseComparison model={model} />
       </div>
     </article>
   );

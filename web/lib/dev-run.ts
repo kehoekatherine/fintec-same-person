@@ -1,6 +1,7 @@
 import { access, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 
+import { absentCustomerIds } from "@/lib/customer-file";
 import { parseCsv } from "@/lib/csv";
 import { DeskError } from "@/lib/errors";
 import { parseResolutions } from "@/lib/resolutions";
@@ -20,12 +21,15 @@ export async function loadDevelopmentRun(): Promise<ResultPayload> {
     if (!match) return result;
     return { ...result, ...match };
   });
+  const cited = rows.flatMap((row) => [row.customerRecordId, ...row.evidence]);
   return {
     source: "development",
+    mode: "recorded",
     notice: confirmed.size
       ? "Recorded decisions from output/dev.jsonl. Confirmed matches include the customer and listed names from output/confirmed-matches.csv. The customer files are not in the repository. This is not a live watchlist and not a regulatory filing."
       : "Recorded decisions from output/dev.jsonl. The customer files for this run are not in the repository. This is not a live watchlist and not a regulatory filing.",
     rows,
+    absentCustomerIds: await absentCustomerIds(cited),
   };
 }
 

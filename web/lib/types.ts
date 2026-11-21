@@ -63,6 +63,8 @@ export type DeskPayload = {
   notice: string;
   ranAt: string;
   cases: DeskCase[];
+  /** Customer ids cited by these cases that are not rows in customers.jsonl. Null when that file was not read. */
+  absentCustomerIds: string[] | null;
 };
 
 export type QueueId = "dev" | "brief" | "upload";
@@ -87,6 +89,8 @@ export type ResultPayload = {
   filename?: string;
   notice: string;
   rows: ResultRow[];
+  /** Customer ids cited by these rows that are not rows in customers.jsonl. Null when that file was not read. */
+  absentCustomerIds: string[] | null;
 };
 
 export type DeskFailure = {

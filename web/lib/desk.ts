@@ -1,6 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 
+import { absentCustomerIds } from "@/lib/customer-file";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
 import { parseResolutions } from "@/lib/resolutions";
@@ -114,21 +115,34 @@ export async function loadDesk(options: { allowSnapshot: boolean }): Promise<Des
   const world = await readWorld();
   try {
     const rows = await runEngine();
-    return assemble(world, rows, {
-      source: "engine",
-      notice: "These decisions were just written by system/run on the fictional brief fixture.",
-    });
+    return finish(
+      assemble(world, rows, {
+        source: "engine",
+        notice: "These decisions were just written by system/run on the fictional brief fixture.",
+      }),
+    );
   } catch (error) {
     if (error instanceof DeskError && error.code === "missing" && options.allowSnapshot) {
       const rows = await readSnapshot();
-      return assemble(world, rows, {
-        source: "snapshot",
-        notice:
-          "Showing the recorded output of system/run. This deployment does not include the Python resolver. Re-run will report that.",
-      });
+      return finish(
+        assemble(world, rows, {
+          source: "snapshot",
+          notice:
+            "Showing the recorded output of system/run. This deployment does not include the Python resolver. Re-run will report that.",
+        }),
+      );
     }
     throw error;
   }
+}
+
+async function finish(payload: DeskPayload): Promise<DeskPayload> {
+  const cited: string[] = [];
+  for (const item of payload.cases) {
+    if (item.resolution.customer_record_id) cited.push(item.resolution.customer_record_id);
+    cited.push(...item.resolution.evidence);
+  }
+  return { ...payload, absentCustomerIds: await absentCustomerIds(cited) };
 }
 
 async function assertFixtureStaysInApp(): Promise<void> {
@@ -206,6 +220,7 @@ function assemble(
     notice: meta.notice,
     ranAt: new Date().toISOString(),
     cases,
+    absentCustomerIds: null,
   };
 }
 

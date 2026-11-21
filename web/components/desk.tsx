@@ -360,11 +360,8 @@ export function Desk() {
             setUploadFilter("all");
           }}
           caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
-          detailNote={
-            upload.mode === "recorded"
-              ? "These evidence ids were recorded in the uploaded file."
-              : "These evidence ids are the records in the uploaded file that decided the hit."
-          }
+          rechecked={upload.mode === "scored"}
+          absentCustomerIds={upload.absentCustomerIds}
         />
       ) : null}
     </DeskFrame>
@@ -422,7 +419,8 @@ function DevQueue({
       onFilter={onFilter}
       onReset={onReset}
       caption="Development screening results"
-      detailNote="Confirmed rows include the customer and listed names from output/confirmed-matches.csv. The development run does not include the customer files. These are the evidence ids the resolver wrote."
+      rechecked={payload.mode === "scored"}
+      absentCustomerIds={payload.absentCustomerIds}
     />
   );
 }
@@ -501,7 +499,13 @@ function BriefQueue({
             onOpen={onOpen}
             onReset={onReset}
           />
-          <CaseView item={openCase} hidden={caseHidden} onBack={onBack} />
+          <CaseView
+            item={openCase}
+            hidden={caseHidden}
+            onBack={onBack}
+            rechecked={payload.source === "engine"}
+            absentCustomerIds={payload.absentCustomerIds}
+          />
         </div>
       ) : null}
     </div>

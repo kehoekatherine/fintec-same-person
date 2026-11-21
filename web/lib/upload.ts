@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { parseCsv, stableId } from "@/lib/csv";
+import { absentCustomerIds } from "@/lib/customer-file";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
 import type { Decision, Resolution, ResultPayload, ResultRow } from "@/lib/types";
@@ -87,6 +88,7 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
       filename,
       notice: `${filename} already had a decision on every row, so those rows are shown as recorded. They stay in this browser session and are not saved.`,
       rows,
+      absentCustomerIds: await absentCustomerIds(rows.flatMap((row) => [row.customerRecordId, ...row.evidence])),
     };
   }
 
@@ -96,12 +98,14 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
     if (id) names.set(id, stringOf(hit.name));
   }
   const scored = await scoreBundle(bundle);
+  const rows = scored.map((row) => toResultRow(row, names.get(row.hit_id) ?? null));
   return {
     source: "upload",
     mode: "scored",
     filename,
     notice: `system/run scored ${filename}. These rows stay in this browser session and are not saved.`,
-    rows: scored.map((row) => toResultRow(row, names.get(row.hit_id) ?? null)),
+    rows,
+    absentCustomerIds: await absentCustomerIds(rows.flatMap((row) => [row.customerRecordId, ...row.evidence])),
   };
 }
 

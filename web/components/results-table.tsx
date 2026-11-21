@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { ClosenessLine } from "@/components/case-assessment";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,11 +103,12 @@ export function ResultsTable({
         <EmptyResults query={query} onReset={onReset} />
       ) : (
         <div className="border border-border bg-card">
-          <Table className="min-w-[46rem]">
+          <Table className="min-w-[56rem]">
             <TableCaption>{caption}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Decision</TableHead>
+                <TableHead>Closeness</TableHead>
                 {showName ? <TableHead>Customer name</TableHead> : null}
                 <TableHead>Hit</TableHead>
                 <TableHead>Alert</TableHead>
@@ -139,6 +141,11 @@ export function ResultsTable({
                       <Badge className={cn("h-6 px-2", DECISION_BADGE[item.row.decision])}>
                         {DECISION_LABEL[item.row.decision]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-64">
+                      {item.row.closeness ? (
+                        <ClosenessLine closeness={item.row.closeness} testId={`closeness-${item.row.hitId}`} />
+                      ) : null}
                     </TableCell>
                     {showName ? (
                       <TableCell className="max-w-48">

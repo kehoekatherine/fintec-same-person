@@ -2,7 +2,7 @@ import { countryKeys, displayCountry, foldText } from "@/lib/countries";
 import { groundsToShow, type Explanation } from "@/lib/explanation";
 import { formatWhen } from "@/lib/format";
 import { DECISION_LABEL, reasonLabel } from "@/lib/labels";
-import type { Decision } from "@/lib/types";
+import type { Comparison, Decision } from "@/lib/types";
 
 export type CompareStatus = "Match" | "Different" | "Undefined";
 
@@ -130,6 +130,7 @@ type Facts = {
   hitCountry: string | null;
   customerEntity: string | null;
   hitEntity: string | null;
+  stored: Comparison | null;
 };
 
 export function comparisonFromExplanation(item: Explanation): CaseComparisonModel {
@@ -151,6 +152,7 @@ export function comparisonFromExplanation(item: Explanation): CaseComparisonMode
     hitCountry: hit ? joinList([...hit.countries, ...hit.nationality]) : null,
     customerEntity: screened?.entityType ?? null,
     hitEntity: hit?.entityType ?? null,
+    stored: item.comparison,
   });
 }
 
@@ -200,7 +202,7 @@ function buildComparison(facts: Facts): CaseComparisonModel {
   ];
 
   return {
-    rows,
+    rows: applyStoredComparison(rows, facts.stored),
     decision: facts.decision,
     decisionLabel: DECISION_LABEL[facts.decision],
     reason: facts.reasonCode ? reasonLabel(facts.reasonCode) : "No reason code was stored.",
@@ -208,6 +210,23 @@ function buildComparison(facts: Facts): CaseComparisonModel {
     action: ACTION[facts.decision],
     sources: sourceLines(facts.evidence, facts.missingCustomerId),
   };
+}
+
+const STORED_STATUS = { match: "Match", different: "Different", undefined: "Undefined" } as const;
+
+function applyStoredComparison(rows: CompareRow[], stored: Comparison | null): CompareRow[] {
+  if (!stored) return rows;
+  const facts = { name: stored.name, dob: stored.dateOfBirth, country: stored.country };
+  return rows.map((row) => {
+    const fact = facts[row.id as keyof typeof facts];
+    if (!fact) return row;
+    return {
+      ...row,
+      customer: row.id === "dob" ? displayDob(fact.customer) : fact.customer.trim() || NOT_GIVEN,
+      hit: row.id === "dob" ? displayDob(fact.hit) : fact.hit.trim() || NOT_GIVEN,
+      status: STORED_STATUS[fact.status],
+    };
+  });
 }
 
 function extraReasons(facts: Facts): string[] {

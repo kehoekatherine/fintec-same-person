@@ -1,5 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 
+import { ClosenessScore } from "@/components/case-assessment";
 import { CaseComparison } from "@/components/case-comparison";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +51,7 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
         </Button>
       </div>
       <CaseComparison model={comparisonFromExplanation(explainCase(item))} />
+      {item.resolution.closeness ? <ClosenessScore closeness={item.resolution.closeness} /> : null}
     </article>
   );
 }

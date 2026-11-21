@@ -3,6 +3,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 
 import { BiasRiskPanel } from "@/components/bias-risk-panel";
+import { ClosenessScore } from "@/components/case-assessment";
 import { CaseComparison } from "@/components/case-comparison";
 import { DevRecord } from "@/components/dev-record";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,6 @@ export function CaseWindow({
 
 function ExplanationBody({ item }: { item: Explanation }) {
   const bias = biasRiskForExplanation(item);
-  const model = comparisonFromExplanation(item);
   return (
     <article className="grid gap-6">
       <div className="flex items-start justify-between gap-3">
@@ -57,7 +57,8 @@ function ExplanationBody({ item }: { item: Explanation }) {
           Close
         </Dialog.Close>
       </div>
-      <CaseComparison model={model} />
+      <CaseComparison model={comparisonFromExplanation(item)} />
+      {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
       {bias ? <BiasRiskPanel score={bias} /> : null}
       {item.source === "row" ? (
         <DevRecord hitId={item.hitId} alertId={item.alertId} customerRecordId={item.customerRecordId} />

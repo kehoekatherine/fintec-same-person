@@ -77,7 +77,10 @@ export function DeskFrame({
         <main
           ref={mainRef}
           data-testid="queue-scroller"
-          className="min-h-0 overflow-auto overscroll-y-contain px-4 py-4 sm:px-6"
+          className={cn(
+            "min-h-0 overflow-auto overscroll-y-contain px-4 py-4 sm:px-6",
+            panelOpen && "max-lg:hidden",
+          )}
           onScroll={(event) => {
             savedScroll.current = event.currentTarget.scrollTop;
           }}
@@ -107,7 +110,7 @@ function CasePlaceholder() {
     <div data-testid="case-placeholder" className="px-5 py-6">
       <h2 className="font-heading text-2xl text-foreground">Choose a hit</h2>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Select a row to read the decision, the reason codes, and the records.
+        Select a row to compare the customer with the watchlist hit.
       </p>
     </div>
   );

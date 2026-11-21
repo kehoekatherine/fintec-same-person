@@ -4,6 +4,11 @@ import path from "node:path";
 import { findDevPack } from "@/lib/data-pack";
 import { stringOf, type Row } from "@/lib/record-fields";
 
+export type NameVariants = {
+  groups: string[][];
+  legalForms: string[];
+};
+
 export type PackIndex = {
   dir: string;
   customers: Map<string, Row>;
@@ -17,6 +22,7 @@ export type PackIndex = {
   checksByApplicant: Map<string, Row[]>;
   applicantsByCustomer: Map<string, string[]>;
   searches: Map<string, Row>;
+  variants: NameVariants;
 };
 
 let loading: Promise<PackIndex | null> | null = null;
@@ -40,7 +46,7 @@ export function customerPresence(index: PackIndex | null, id: string | null): bo
 async function readIndex(): Promise<PackIndex | null> {
   const dir = await findDevPack();
   if (!dir) return null;
-  const [customers, accounts, hits, alerts, notes, checks, searches, onboarding] = await Promise.all([
+  const [customers, accounts, hits, alerts, notes, checks, searches, onboarding, variants] = await Promise.all([
     readRows(path.join(dir, "customers.jsonl")),
     readRows(path.join(dir, "accounts.jsonl")),
     readRows(path.join(dir, "hits.jsonl")),
@@ -49,6 +55,7 @@ async function readIndex(): Promise<PackIndex | null> {
     readRows(path.join(dir, "kyc_checks.jsonl")),
     readRows(path.join(dir, "search_results.jsonl")),
     readRows(path.join(dir, "onboarding.jsonl")),
+    readVariants(path.join(dir, "name_variants.json")),
   ]);
   const customerMap = new Map<string, Row>();
   for (const row of customers) {
@@ -117,7 +124,26 @@ async function readIndex(): Promise<PackIndex | null> {
     checksByApplicant,
     applicantsByCustomer,
     searches: indexBy(searches, "result_id"),
+    variants,
   };
+}
+
+async function readVariants(file: string): Promise<NameVariants> {
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8")) as { groups?: unknown; company_legal_forms?: unknown };
+    const groups = Array.isArray(parsed.groups)
+      ? parsed.groups
+          .filter((group): group is unknown[] => Array.isArray(group))
+          .map((group) => group.filter((name): name is string => typeof name === "string" && Boolean(name.trim())))
+          .filter((group) => group.length > 0)
+      : [];
+    const legalForms = Array.isArray(parsed.company_legal_forms)
+      ? parsed.company_legal_forms.filter((name): name is string => typeof name === "string" && Boolean(name.trim()))
+      : [];
+    return { groups, legalForms };
+  } catch {
+    return { groups: [], legalForms: [] };
+  }
 }
 
 function indexBy(rows: Row[], key: string): Map<string, Row> {

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Usage: system/run <data folder> <output file>
+cd "$(dirname "$0")" || exit 1
+exec python3 resolve.py "$1" "$2"

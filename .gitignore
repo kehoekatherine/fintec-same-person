@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.dev/
+dev/
+data/
+*.xlsx
+*.zip
+.env
+.env.*
+node_modules/
+.next/
+next-env.d.ts

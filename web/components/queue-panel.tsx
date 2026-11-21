@@ -81,11 +81,13 @@ export function QueuePanel({
                     type="button"
                     variant={active ? "secondary" : "outline"}
                     aria-pressed={active}
-                    aria-haspopup="dialog"
+                    data-selected={active ? "true" : "false"}
                     data-testid={`hit-${item.hitId}`}
                     className={cn(
                       "h-auto min-h-16 w-full items-start justify-start gap-3 border-border px-3 py-3 text-left whitespace-normal",
-                      active ? "border-primary bg-muted" : "bg-card",
+                      active
+                        ? "border-primary bg-secondary shadow-[inset_3px_0_0_0_var(--primary)]"
+                        : "bg-card",
                     )}
                     onClick={() => onOpen(item.hitId)}
                   >

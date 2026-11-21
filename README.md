@@ -20,6 +20,26 @@ Score the development predictions with the checker shipped in the data pack:
 python3 validate.py --data <data folder> --output output/dev.jsonl --score <data folder>/practice_labels.jsonl
 ```
 
-`output/dev.jsonl` is the development run. The customer and watchlist files are not in this repository.
+`output/dev.jsonl` is the development run. The development customer and watchlist files are not in this repository. A small fictional fixture, built only from the four examples in the public brief, lives in `web/fixtures/brief`.
 
 How a customer is resolved, how a hit is read, and how evidence is chosen is described in [system/README.md](system/README.md).
+
+## Try it
+
+The screening desk is a Next.js app in `web/`. It shows those four fictional cases — not a live watchlist — and the decision `system/run` wrote for each one.
+
+```sh
+cd web
+npm install
+npm run dev
+```
+
+The dev server listens on port 4317. Open http://127.0.0.1:4317
+
+`system/run` is unchanged. It still uses only the Python standard library, reads a data folder, and writes one JSON line per hit:
+
+```sh
+system/run "$(pwd)/web/fixtures/brief" "$(pwd)/output/brief.jsonl"
+```
+
+Pass absolute paths. The `system/run` script changes into `system/` before it reads the folder, so a path relative to the repository root would miss the fixture. The desk can re-run that same command on the fictional fixture from the page.

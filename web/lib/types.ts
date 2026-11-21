@@ -76,6 +76,9 @@ export type DeskCase = {
   resolution: Resolution;
   evidence: EvidenceRecord[];
   customerNote: string;
+  groundsChecked: boolean;
+  applicableCodes: string[];
+  customerMissing: boolean;
 };
 
 export type DeskPayload = {
@@ -101,6 +104,9 @@ export type ResultRow = {
   listedName: string | null;
   customerDob: string | null;
   customerCountry: string | null;
+  groundsChecked: boolean;
+  applicableCodes: string[];
+  customerMissing: boolean;
 };
 
 export type ResultPayload = {

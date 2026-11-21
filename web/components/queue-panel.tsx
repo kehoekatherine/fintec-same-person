@@ -81,6 +81,7 @@ export function QueuePanel({
                     type="button"
                     variant={active ? "secondary" : "outline"}
                     aria-pressed={active}
+                    aria-haspopup="dialog"
                     data-testid={`hit-${item.hitId}`}
                     className={cn(
                       "h-auto min-h-16 w-full items-start justify-start gap-3 border-border px-3 py-3 text-left whitespace-normal",

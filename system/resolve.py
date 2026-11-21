@@ -49,6 +49,14 @@ CODE_PRIORITY = (
     "NAME_MISMATCH_VERIFIED",
     "LOCATION_MISMATCH",
 )
+# Display order for every ground that applies. The stored reason_code is still the one decide_hit writes.
+GROUND_PRIORITY = CODE_PRIORITY + (
+    "NAME_DOB_LOCATION_MATCH",
+    "NAME_DOB_MATCH",
+    "NAME_LOCATION_MATCH",
+    "INSUFFICIENT_DATA",
+    "AMBIGUOUS_CUSTOMER_RECORD",
+)
 DECISION_OF = {
     "ENTITY_TYPE_MISMATCH": "DIFFERENT_ENTITY",
     "DECEASED": "DIFFERENT_ENTITY",
@@ -1198,8 +1206,8 @@ def _dob_clause(person: Person, facts: HitFacts) -> str:
     return f"The customer's date of birth is {dob}{source} but {where}."
 
 
-def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Partial | None) -> tuple[str, list[str], list[str]]:
-    """Return the reason code, the evidence ids, and the reason sentences."""
+def _comparison(world: World, person: Person, facts: HitFacts, screened_at: Partial | None) -> dict:
+    """The same predicates decide_one uses. Extra keys are for the explanation window only."""
     company = person.kind == "company" or facts.kind == "company"
     comparable_names = [person.verified_parts] if person.verified_parts else person.declared_names
     name_agree = world.names.any_agree(comparable_names, facts.names) if comparable_names else False
@@ -1231,29 +1239,83 @@ def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Parti
         temporal = True
     # A country clash does not clear a hit whose name and date of birth already agree.
     location_clear = disjoint and not (name_agree and relation == "agree")
-    codes = []
-    if type_mismatch:
-        codes.append("ENTITY_TYPE_MISMATCH")
-    if deceased:
-        codes.append("DECEASED")
-    if temporal:
-        codes.append("TEMPORAL_IMPOSSIBILITY")
-    if relation == "contradict":
-        codes.append("DOB_MISMATCH")
-    if name_mismatch:
-        codes.append("NAME_MISMATCH_VERIFIED")
-    if location_clear:
-        codes.append("LOCATION_MISMATCH")
-    if codes:
-        code = next(item for item in CODE_PRIORITY if item in codes)
-        return code, _evidence(person, facts, code, codes), _different_reason(person, facts, code, age_cap, overlap)
+    return {
+        "name_agree": name_agree,
+        "name_mismatch": name_mismatch,
+        "relation": relation,
+        "overlap": overlap,
+        "disjoint": disjoint,
+        "type_mismatch": type_mismatch,
+        "deceased": deceased,
+        "temporal": temporal,
+        "age_cap": age_cap,
+        "location_clear": location_clear,
+    }
 
-    if person.kind == "company" and name_agree and overlap and not type_mismatch:
-        return "NAME_LOCATION_MATCH", _evidence(person, facts, "NAME_LOCATION_MATCH", []), _same_company_reason(world, person, facts, overlap)
-    if person.kind != "company" and name_agree and relation == "agree" and not disjoint:
-        code = "NAME_DOB_LOCATION_MATCH" if overlap else "NAME_DOB_MATCH"
-        return code, _evidence(person, facts, code, []), _same_person_reason(world, person, facts, overlap, code)
-    return "INSUFFICIENT_DATA", _evidence(person, facts, "INSUFFICIENT_DATA", []), _review_reason(world, person, facts, name_agree, overlap, relation, disjoint)
+
+def applicable_for_person(world: World, person: Person, facts: HitFacts, screened_at: Partial | None) -> tuple[list[str], dict]:
+    """Every ground that applies to this one person, in priority order, plus the comparison."""
+    view = _comparison(world, person, facts, screened_at)
+    found: list[str] = []
+    if view["type_mismatch"]:
+        found.append("ENTITY_TYPE_MISMATCH")
+    if view["deceased"]:
+        found.append("DECEASED")
+    if view["temporal"]:
+        found.append("TEMPORAL_IMPOSSIBILITY")
+    if view["relation"] == "contradict":
+        found.append("DOB_MISMATCH")
+    if view["name_mismatch"]:
+        found.append("NAME_MISMATCH_VERIFIED")
+    if view["location_clear"]:
+        found.append("LOCATION_MISMATCH")
+    if found:
+        return [item for item in CODE_PRIORITY if item in found], view
+    if person.kind == "company" and view["name_agree"] and view["overlap"] and not view["type_mismatch"]:
+        return ["NAME_LOCATION_MATCH"], view
+    if person.kind != "company" and view["name_agree"] and view["relation"] == "agree" and not view["disjoint"]:
+        code = "NAME_DOB_LOCATION_MATCH" if view["overlap"] else "NAME_DOB_MATCH"
+        return [code], view
+    return ["INSUFFICIENT_DATA"], view
+
+
+def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Partial | None) -> tuple[str, list[str], list[str]]:
+    """Return the reason code, the evidence ids, and the reason sentences."""
+    codes, view = applicable_for_person(world, person, facts, screened_at)
+    code = codes[0]
+    if code in CODE_PRIORITY:
+        return code, _evidence(person, facts, code, codes), _different_reason(person, facts, code, view["age_cap"], view["overlap"])
+    if code == "NAME_LOCATION_MATCH":
+        return code, _evidence(person, facts, code, []), _same_company_reason(world, person, facts, view["overlap"])
+    if code in {"NAME_DOB_LOCATION_MATCH", "NAME_DOB_MATCH"}:
+        return code, _evidence(person, facts, code, []), _same_person_reason(world, person, facts, view["overlap"], code)
+    return code, _evidence(person, facts, code, []), _review_reason(
+        world, person, facts, view["name_agree"], view["overlap"], view["relation"], view["disjoint"],
+    )
+
+
+def applicable_codes(world: World, alert: dict | None, hit: dict) -> list[str]:
+    """Every ground that applies to this hit. Does not change the stored decision."""
+    facts = world.hit_facts(hit)
+    screened_at = parse_date(alert.get("screened_at") if alert else None)
+    people = world.people_for_alert(alert) if alert else []
+    if not people:
+        return ["INSUFFICIENT_DATA"]
+    per = [applicable_for_person(world, person, facts, screened_at)[0] for person in people]
+    decisions = {DECISION_OF[codes[0]] for codes in per}
+    found = {code for codes in per for code in codes}
+    if len(people) > 1 and len(decisions) > 1:
+        found.add("AMBIGUOUS_CUSTOMER_RECORD")
+    return [item for item in GROUND_PRIORITY if item in found]
+
+
+def explain_codes(data: Path) -> list[dict]:
+    world = World(data)
+    rows = []
+    for hit in world.hits:
+        alert = world.alerts.get(hit["alert_id"])
+        rows.append({"hit_id": hit["hit_id"], "codes": applicable_codes(world, alert, hit)})
+    return rows
 
 
 def _overlapping_sources(person: Person, facts: HitFacts) -> list[str]:

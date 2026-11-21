@@ -1,6 +1,6 @@
 import { DeskError } from "./errors.ts";
 
-const MAX_PYTHON = 2;
+const MAX_PYTHON = 4;
 let active = 0;
 
 export function acquirePython(): () => void {

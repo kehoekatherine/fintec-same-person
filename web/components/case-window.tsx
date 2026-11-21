@@ -10,7 +10,7 @@ import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { biasRiskForExplanation } from "@/lib/bias-risk";
-import { comparisonRows, CUSTOMER_FILE_ABSENT, type CaseFacts } from "@/lib/compare-rows";
+import { comparisonRows, CUSTOMER_FILE_ABSENT, type CaseFacts, type CompareDisplayRow } from "@/lib/compare-rows";
 import { actionFor, type Explanation } from "@/lib/explanation";
 import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
 import { cn } from "cn";
@@ -88,6 +88,7 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
             {conclusionLine(item.reasonCode, item.decision)}
           </p>
         </section>
+        <ModelReasoning item={item} rows={rows} />
         <section aria-label="Action" data-testid="action">
           <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Action</h3>
           <p className="mt-1 text-base leading-7 text-foreground" data-testid="case-action">
@@ -100,6 +101,64 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
         </div>
       </div>
     </article>
+  );
+}
+
+function ModelReasoning({ item, rows }: { item: Explanation; rows: CompareDisplayRow[] }) {
+  const [text, setText] = useState<string | null>(null);
+  const [source, setSource] = useState<"model" | "rules" | "unavailable" | "error" | "loading">("loading");
+  const payload = JSON.stringify({
+    hitId: item.hitId,
+    decision: item.decision,
+    reasonCode: item.reasonCode,
+    reason: item.reason,
+    facts: rows.map((row) => ({
+      label: row.label,
+      customer: row.customer,
+      hit: row.hit,
+      status: row.status,
+    })),
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setSource("loading");
+    setText(null);
+    void (async () => {
+      try {
+        const response = await fetch("/api/reason", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          signal: controller.signal,
+          body: payload,
+        });
+        const body = (await response.json()) as { text?: string; source?: string; error?: string };
+        if (controller.signal.aborted) return;
+        if (!response.ok || !body.text) {
+          setSource("error");
+          setText(body.error || "The model did not answer.");
+          return;
+        }
+        setText(body.text);
+        setSource(body.source === "model" || body.source === "rules" || body.source === "unavailable" ? body.source : "rules");
+      } catch {
+        if (!controller.signal.aborted) {
+          setSource("error");
+          setText("The model did not answer.");
+        }
+      }
+    })();
+    return () => controller.abort();
+  }, [payload]);
+
+  const label = source === "model" ? "Model reasoning" : source === "rules" ? "Rule reasoning" : "Reasoning";
+  return (
+    <section aria-label="Reasoning" data-testid="model-reasoning">
+      <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">{label}</h3>
+      <p className="mt-1 text-sm leading-6 text-foreground" data-testid="model-reasoning-text">
+        {source === "loading" ? "Asking the model…" : text}
+      </p>
+    </section>
   );
 }
 

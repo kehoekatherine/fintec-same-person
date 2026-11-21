@@ -34,12 +34,8 @@ test("upload size is rejected before a body is accepted", () => {
   assert.match(contentLengthRejection(String(9 * 1024 * 1024)) ?? "", /8 MB/);
 });
 
-test("only two resolver processes can run at once", () => {
-  const releaseA = acquirePython();
-  const releaseB = acquirePython();
+test("resolver processes stay bounded", () => {
+  const releases = [acquirePython(), acquirePython(), acquirePython(), acquirePython()];
   assert.throws(() => acquirePython(), /busy/);
-  releaseA();
-  const releaseC = acquirePython();
-  releaseB();
-  releaseC();
+  for (const release of releases) release();
 });

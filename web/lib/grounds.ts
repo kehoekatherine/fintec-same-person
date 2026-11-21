@@ -4,7 +4,19 @@ import path from "node:path";
 import { resolveSystemDir } from "@/lib/engine";
 import { acquirePython } from "@/lib/python-slot";
 
-export async function loadApplicableCodes(dataDir: string, timeoutMs: number): Promise<Map<string, string[]> | null> {
+const inflightCodes = new Map<string, Promise<Map<string, string[]> | null>>();
+
+export function loadApplicableCodes(dataDir: string, timeoutMs: number): Promise<Map<string, string[]> | null> {
+  const existing = inflightCodes.get(dataDir);
+  if (existing) return existing;
+  const pending = loadApplicableCodesOnce(dataDir, timeoutMs).finally(() => {
+    if (inflightCodes.get(dataDir) === pending) inflightCodes.delete(dataDir);
+  });
+  inflightCodes.set(dataDir, pending);
+  return pending;
+}
+
+async function loadApplicableCodesOnce(dataDir: string, timeoutMs: number): Promise<Map<string, string[]> | null> {
   const systemDir = await resolveSystemDir();
   if (!systemDir) return null;
   const script = path.join(systemDir, "explain_codes.py");

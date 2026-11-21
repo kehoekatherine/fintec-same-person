@@ -41,6 +41,46 @@ The program was written in Cursor with an AI coding agent (Grok). The agent turn
 
 **Output.** One JSON line per hit in the output file. Each line has the hit and alert ids, a decision (`DIFFERENT_ENTITY`, `SAME_ENTITY`, or `REVIEW`), a reason code, the customer record id (or `AMBIGUOUS`, or null), two to four sentences naming this hit's facts, and the evidence record ids.
 
+## Files
+
+The screening folder holds these files. The files in `dev/` are the participant data pack and are not committed in this repository. `POLICY.md`, `validate.py`, and `output.schema.json` travel with that pack and are not committed here either.
+
+**`POLICY.md`.** The bank's identity rules: the decisions, the principles, and the reason codes. The program implements these rules. It does not read this file at runtime. The copy inside `dev/` is the same document beside the data.
+
+**`dev/hits.jsonl`.** One watchlist profile per line. Names, aliases, dates, countries, addresses, categories, and profile notes.
+
+**`dev/practice_labels.jsonl`.** 50 hits with the expected decision, acceptable reason codes, customer ids, and evidence, for local scoring.
+
+**`dev/search_results.jsonl`.** Web search snippets for names. Most are namesakes. A snippet counts only when it is about that hit.
+
+**`dev/customers.jsonl`.** The bank's customer records. One person can have more than one record.
+
+**`dev/accounts.jsonl`.** Accounts and logins, and which customer they belong to. Joint accounts list more than one holder.
+
+**`dev/onboarding.jsonl`.** The link from an account to the identity-check applicant id.
+
+**`dev/alerts.jsonl`.** One alert per line. The customer as screened, the link (account, login, or email) when there is one, and the hit ids.
+
+**`dev/name_variants.json`.** Name forms that count as the same (Mohammed and Muhammad) and company legal forms that are not name parts.
+
+**`dev/notes.jsonl`.** Support and onboarding notes, filed by email.
+
+**`dev/kyc_checks.jsonl`.** Identity checks. The verified name, date of birth, document, document number, and whether the check was approved, rejected, or expired.
+
+**`validate.py`.** Checks that an output file is well formed and, with the practice labels, scores those 50 hits.
+
+**`system/`.** The resolver. `system/run` is the command. It is Python standard library only.
+
+**`README.md`.** This explanation.
+
+**`output.schema.json`.** The required fields on each output line.
+
+**`output/dev.jsonl`.** The resolver's decision for every development hit.
+
+**`output/confirmed-matches.csv`.** The rows whose decision is `SAME_ENTITY`.
+
+**`web/`.** The desk for reading those results. Not used by the scorer.
+
 ## Run
 
 Python 3.10 or newer. The standard library only. No API key.

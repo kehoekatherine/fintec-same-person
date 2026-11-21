@@ -1,0 +1,24 @@
+{
+  "description": "Minimal name-variant list for the fictional brief cases. Tom and Thomas are grouped because a three-letter nickname cannot match on edit distance. Mohammed and Mohamed are grouped the way the public brief describes spelling variants.",
+  "groups": [
+    [
+      "Tom",
+      "Thomas"
+    ],
+    [
+      "Mohammed",
+      "Mohamed",
+      "Muhammad"
+    ]
+  ],
+  "company_legal_forms": [
+    "Ltd",
+    "Limited",
+    "GmbH",
+    "SA",
+    "S.A.",
+    "Inc",
+    "LLC",
+    "PLC"
+  ]
+}

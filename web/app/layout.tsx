@@ -11,9 +11,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Watch List Screening Desk",
+  title: "Watchlist Screening Desk",
   description:
-    "Watch List Screening Desk compares each customer with a watchlist hit and shows closeness, bias, and confidence. Not a live watchlist and not a regulatory filing.",
+    "Watchlist Screening Desk compares each customer with a watchlist hit and shows closeness, bias, and confidence. Not a live watchlist and not a regulatory filing.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

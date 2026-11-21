@@ -23,7 +23,7 @@ export function DeskFrame({
       <header className="shrink-0 border-b border-border px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="font-heading text-3xl tracking-tight text-foreground sm:text-4xl">Watch List Screening Desk</h1>
+            <h1 className="font-heading text-3xl tracking-tight text-foreground sm:text-4xl">Watchlist Screening Desk</h1>
             <div className="mt-2 h-1 w-12 bg-primary" aria-hidden />
           </div>
           <div className="flex flex-wrap items-center gap-2">

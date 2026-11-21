@@ -11,7 +11,8 @@ import { QueueSwitch } from "@/components/queue-switch";
 import { ResultsTable } from "@/components/results-table";
 import { UploadControl } from "@/components/upload-control";
 import { explainRow } from "@/lib/explanation";
-import type { DeskFailure, FilterId, QueueId, ResultPayload } from "@/lib/types";
+import { isDecision } from "@/lib/resolutions";
+import type { DeskFailure, FilterId, PracticeLabel, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
 
 export function Desk() {
@@ -90,7 +91,10 @@ export function Desk() {
     setDevStatus("loading");
     setDevError(null);
     try {
-      const response = await fetch("/api/development", { cache: "no-store" });
+      const [response, labels] = await Promise.all([
+        fetch("/api/development", { cache: "no-store" }),
+        fetchPracticeLabels(),
+      ]);
       const body = (await response.json()) as ResultPayload & DeskFailure;
       if (!response.ok || !body.rows) {
         setDev(null);
@@ -101,7 +105,7 @@ export function Desk() {
         });
         return;
       }
-      setDev(body);
+      setDev(withLabels(body, labels));
       setDevStatus("ready");
     } catch {
       setDev(null);
@@ -114,7 +118,10 @@ export function Desk() {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch("/api/development", { cache: "no-store" });
+        const [response, labels] = await Promise.all([
+          fetch("/api/development", { cache: "no-store" }),
+          fetchPracticeLabels(),
+        ]);
         const body = (await response.json()) as ResultPayload & DeskFailure;
         if (cancelled) return;
         if (!response.ok || !body.rows) {
@@ -126,7 +133,7 @@ export function Desk() {
           });
           return;
         }
-        setDev(body);
+        setDev(withLabels(body, labels));
         setDevStatus("ready");
       } catch {
         if (cancelled) return;
@@ -238,6 +245,7 @@ export function Desk() {
             setUploadFilter("all");
           }}
           caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
+          labels={upload.labels}
         />
       ) : null}
     </DeskFrame>
@@ -304,8 +312,34 @@ function DevQueue({
       onOpen={onOpen}
       onReset={onReset}
       caption="Development screening results"
+      labels={payload.labels}
     />
   );
+}
+
+function withLabels(payload: ResultPayload, labels: PracticeLabel[] | null): ResultPayload {
+  if (!labels || labels.length === 0) return payload;
+  return { ...payload, labels };
+}
+
+async function fetchPracticeLabels(): Promise<PracticeLabel[] | null> {
+  try {
+    const response = await fetch("/api/development/labels", { cache: "no-store" });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { labels?: unknown };
+    if (!Array.isArray(body.labels)) return null;
+    const labels: PracticeLabel[] = [];
+    for (const item of body.labels) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as { hitId?: unknown; decision?: unknown };
+      if (typeof record.hitId !== "string" || !record.hitId || typeof record.decision !== "string") continue;
+      if (!isDecision(record.decision)) continue;
+      labels.push({ hitId: record.hitId, decision: record.decision });
+    }
+    return labels;
+  } catch {
+    return null;
+  }
 }
 
 function Failure({

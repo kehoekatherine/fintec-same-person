@@ -118,6 +118,12 @@ export type DeskPayload = {
 
 export type QueueId = "dev" | "upload";
 
+/** A practice-label decision. Only the fields the judging matrix needs. */
+export type PracticeLabel = {
+  hitId: string;
+  decision: Decision;
+};
+
 export type ResultRow = {
   hitId: string;
   alertId: string;
@@ -139,12 +145,37 @@ export type ResultRow = {
   customerMissing: boolean;
 };
 
+export type ModelCount = {
+  correct: number;
+  total: number;
+};
+
+/**
+ * Decision score and accuracy for hits that have a practice label.
+ * A null fitness or ratio means that figure is unavailable.
+ */
+export type ModelFitness = {
+  labelsRead: boolean;
+  fitness: number | null;
+  cost: number;
+  baseline: number;
+  accuracy: ModelCount | null;
+  clearancePrecision: ModelCount | null;
+  sameEntityRecall: ModelCount | null;
+  labeled: number;
+  unlabeled: number;
+  hits: number;
+};
+
 export type ResultPayload = {
   source: "development" | "upload";
   mode?: "recorded" | "scored";
   filename?: string;
   notice: string;
   rows: ResultRow[];
+  model?: ModelFitness;
+  /** Practice labels for the development run, when this machine has them. */
+  labels?: PracticeLabel[];
 };
 
 export type DeskFailure = {

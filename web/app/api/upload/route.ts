@@ -29,7 +29,8 @@ export async function POST(request: Request) {
   }
   try {
     const { acceptUpload } = await import("@/lib/upload");
-    return NextResponse.json(await acceptUpload(file));
+    const { annotateModelFitness } = await import("@/lib/practice-labels");
+    return NextResponse.json(await annotateModelFitness(await acceptUpload(file)));
   } catch (error) {
     return failure(error);
   }

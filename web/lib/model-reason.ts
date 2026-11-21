@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 
 import { publishedHost } from "@/lib/data-pack";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions";
+const DEFAULT_MODEL = "grok-4.7";
 const cache = new Map<string, string>();
 
 export type ReasonFact = {
@@ -25,8 +26,16 @@ export type ReasonResult = {
   source: "model" | "rules" | "unavailable";
 };
 
+function configuredKey(): string {
+  return (process.env.XAI_API_KEY || "").trim() || (process.env.GROK_API_KEY || "").trim();
+}
+
+function configuredModel(): string {
+  return (process.env.XAI_MODEL || "").trim() || (process.env.GROK_MODEL || "").trim() || DEFAULT_MODEL;
+}
+
 export function modelConfigured(): boolean {
-  return Boolean((process.env.OPENROUTER_API_KEY || "").trim()) && !publishedHost();
+  return Boolean(configuredKey()) && !publishedHost();
 }
 
 export async function modelReason(input: ReasonRequest): Promise<ReasonResult> {
@@ -36,15 +45,16 @@ export async function modelReason(input: ReasonRequest): Promise<ReasonResult> {
       source: "unavailable",
     };
   }
-  const key = (process.env.OPENROUTER_API_KEY || "").trim();
+  const key = configuredKey();
   if (!key) {
     return { text: input.reason, source: "rules" };
   }
+  const model = configuredModel();
   const prompt = promptFor(input);
-  const digest = createHash("sha256").update(prompt).digest("hex");
+  const digest = createHash("sha256").update(`${model}\n${prompt}`).digest("hex");
   const cached = cache.get(digest);
   if (cached) return { text: cached, source: "model" };
-  const text = await ask(key, prompt);
+  const text = await ask(key, model, prompt);
   cache.set(digest, text);
   return { text, source: "model" };
 }
@@ -69,16 +79,15 @@ function clip(value: string, max = 120): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-async function ask(apiKey: string, prompt: string): Promise<string> {
-  const model = (process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini").trim();
+async function ask(apiKey: string, model: string, prompt: string): Promise<string> {
   const body = {
     model,
     temperature: 0,
     seed: 0,
-    max_tokens: 180,
+    max_completion_tokens: 180,
     messages: [{ role: "user", content: prompt }],
   };
-  const response = await fetch(OPENROUTER_URL, {
+  const response = await fetch(XAI_CHAT_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

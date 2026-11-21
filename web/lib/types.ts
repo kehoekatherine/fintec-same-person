@@ -76,6 +76,9 @@ export type ResultRow = {
   reason: string;
   evidence: string[];
   name: string | null;
+  listedName: string | null;
+  customerDob: string | null;
+  customerCountry: string | null;
 };
 
 export type ResultPayload = {

@@ -422,7 +422,7 @@ function DevQueue({
       onFilter={onFilter}
       onReset={onReset}
       caption="Development screening results"
-      detailNote="The development run does not include the customer files. These are the evidence ids the resolver wrote."
+      detailNote="Confirmed rows include the customer and listed names from output/confirmed-matches.csv. The development run does not include the customer files. These are the evidence ids the resolver wrote."
     />
   );
 }

@@ -84,7 +84,7 @@ export function ResultsTable({
         <Input
           value={query}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Hit id, reason code, or reason"
+          placeholder="Hit id, name, reason code, or reason"
           aria-label="Search the results"
           data-testid="result-search"
           className="h-10 bg-card"
@@ -109,7 +109,7 @@ export function ResultsTable({
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Decision</TableHead>
-                {showName ? <TableHead>Name</TableHead> : null}
+                {showName ? <TableHead>Customer name</TableHead> : null}
                 <TableHead>Hit</TableHead>
                 <TableHead>Alert</TableHead>
                 <TableHead>Reason code</TableHead>
@@ -141,7 +141,17 @@ export function ResultsTable({
                         {DECISION_LABEL[item.row.decision]}
                       </Badge>
                     </TableCell>
-                    {showName ? <TableCell className="max-w-40">{item.row.name ?? "Not given"}</TableCell> : null}
+                    {showName ? (
+                      <TableCell className="max-w-48">
+                        <span className="block">
+                          {item.row.name ??
+                            (item.row.customerRecordId === "AMBIGUOUS" ? "Ambiguous customer" : "Not given")}
+                        </span>
+                        {item.row.listedName ? (
+                          <span className="mt-1 block text-xs text-muted-foreground">{item.row.listedName}</span>
+                        ) : null}
+                      </TableCell>
+                    ) : null}
                     <TableCell className="font-mono text-xs">{item.row.hitId}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.alertId || "Not given"}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.reasonCode || "Not given"}</TableCell>
@@ -196,7 +206,7 @@ function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
     <article data-testid="result-detail" className="border-y border-r border-l-4 border-border border-l-primary bg-card px-5 py-5">
       <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Selected row</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <h2 className="font-heading text-2xl">{row.name || row.hitId}</h2>
+        <h2 className="font-heading text-2xl">{row.name || row.listedName || row.hitId}</h2>
         <Badge className={cn("h-6 px-2", DECISION_BADGE[row.decision])}>{DECISION_LABEL[row.decision]}</Badge>
         {row.reasonCode ? (
           <span className="font-mono text-xs text-muted-foreground">{row.reasonCode}</span>
@@ -207,6 +217,13 @@ function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
         {row.hitId}
         {row.alertId ? ` · ${row.alertId}` : ""} · Customer {row.customerRecordId ?? "not resolved"}
       </p>
+      {row.listedName || row.customerDob || row.customerCountry ? (
+        <p className="mt-2 text-sm leading-6 text-foreground">
+          {row.listedName ? `Listed name ${row.listedName}` : null}
+          {row.customerDob ? `${row.listedName ? " · " : ""}Born ${row.customerDob}` : null}
+          {row.customerCountry ? ` · ${row.customerCountry}` : null}
+        </p>
+      ) : null}
       <div className="mt-4 grid gap-3">
         {lines.map((line) => (
           <p key={line} className="text-base leading-7 text-foreground">

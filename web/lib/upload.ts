@@ -346,6 +346,9 @@ function asResult(row: Record<string, unknown>, index: number): ResultRow {
     reason,
     evidence: evidenceOf(row.evidence),
     name,
+    listedName: stringOf(row.listed_name),
+    customerDob: stringOf(row.customer_dob) ?? stringOf(row.dob),
+    customerCountry: stringOf(row.customer_country) ?? stringOf(row.country),
   };
 }
 
@@ -359,6 +362,9 @@ export function toResultRow(row: Resolution, name: string | null = null): Result
     reason: row.reason,
     evidence: row.evidence,
     name,
+    listedName: null,
+    customerDob: null,
+    customerCountry: null,
   };
 }
 

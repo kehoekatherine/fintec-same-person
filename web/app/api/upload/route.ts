@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { NextResponse } from "next/server";
 
 import { DeskError } from "@/lib/errors";
-import { acceptUpload } from "@/lib/upload";
+import { contentLengthRejection } from "@/lib/upload-file";
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : "The file could not be added.";
@@ -13,6 +13,10 @@ function failure(error: unknown) {
 
 export async function POST(request: Request) {
   await connection();
+  const tooLarge = contentLengthRejection(request.headers.get("content-length"));
+  if (tooLarge) {
+    return NextResponse.json({ error: tooLarge }, { status: tooLarge.includes("8 MB") ? 413 : 411 });
+  }
   let form: FormData;
   try {
     form = await request.formData();
@@ -24,6 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Choose a CSV or JSON file to add." }, { status: 400 });
   }
   try {
+    const { acceptUpload } = await import("@/lib/upload");
     return NextResponse.json(await acceptUpload(file));
   } catch (error) {
     return failure(error);

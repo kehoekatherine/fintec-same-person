@@ -13,6 +13,16 @@ export function isAcceptedExtension(extension: string): extension is "csv" | "js
   return ACCEPTED.has(extension);
 }
 
+const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
+
+export function contentLengthRejection(header: string | null): string | null {
+  if (header == null || header.trim() === "") return "The upload needs a content length.";
+  if (!/^\d+$/.test(header.trim())) return "The upload content length is not a number.";
+  const size = Number(header);
+  if (size > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES) return "That file is larger than 8 MB.";
+  return null;
+}
+
 export function uploadRejection(name: string, size: number): string | null {
   if (!isAcceptedExtension(fileExtension(name))) {
     return "Only .csv, .json, and .jsonl files can be added.";

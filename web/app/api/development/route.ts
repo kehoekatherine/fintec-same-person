@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { NextResponse } from "next/server";
 
-import { loadDevelopmentRun } from "@/lib/dev-run";
+import { PUBLIC_PACK_UNAVAILABLE, publishedHost } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 
 function failure(error: unknown) {
@@ -13,7 +13,11 @@ function failure(error: unknown) {
 
 export async function GET() {
   await connection();
+  if (publishedHost()) {
+    return NextResponse.json({ error: PUBLIC_PACK_UNAVAILABLE }, { status: 404 });
+  }
   try {
+    const { loadDevelopmentRun } = await import("@/lib/dev-run");
     return NextResponse.json(await loadDevelopmentRun());
   } catch (error) {
     return failure(error);

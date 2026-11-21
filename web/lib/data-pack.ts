@@ -3,6 +3,14 @@ import path from "node:path";
 
 export const MISSING_DATA_FOLDER = "The data folder is not on this machine.";
 
+export const PUBLIC_PACK_UNAVAILABLE =
+  "The development customer file is not available on this public desk.";
+
+/** The published host sets this. A local run does not, and may still read a pack already on the machine. */
+export function publishedHost(): boolean {
+  return Boolean(process.env.CURSOR_APP_ID?.trim());
+}
+
 /** Files system/run reads from a development folder. */
 export const DEV_PACK_FILES = [
   "customers.jsonl",
@@ -21,6 +29,7 @@ export const DEV_PACK_FILES = [
  * The repository does not contain that folder. SCREENING_DEV_DIR overrides the default location.
  */
 export async function findDevPack(): Promise<string | null> {
+  if (publishedHost()) return null;
   const candidates = [process.env.SCREENING_DEV_DIR, "/tmp/hackathon-data/unpacked/screening/dev"].filter(
     (value): value is string => Boolean(value && value.trim()),
   );

@@ -1,8 +1,7 @@
 import { connection } from "next/server";
 import { NextResponse } from "next/server";
 
-import { loadCaseFacts } from "@/lib/case-facts";
-import { openDevelopmentRecord } from "@/lib/dev-case";
+import { PUBLIC_PACK_UNAVAILABLE, publishedHost } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 
 function failure(error: unknown) {
@@ -14,8 +13,13 @@ function failure(error: unknown) {
 
 export async function GET(request: Request) {
   await connection();
+  if (publishedHost()) {
+    return NextResponse.json({ error: PUBLIC_PACK_UNAVAILABLE }, { status: 404 });
+  }
   const url = new URL(request.url);
   try {
+    const { loadCaseFacts } = await import("@/lib/case-facts");
+    const { openDevelopmentRecord } = await import("@/lib/dev-case");
     const hitId = url.searchParams.get("hit");
     const alertId = url.searchParams.get("alert");
     const customerRecordId = url.searchParams.get("customer");

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 
 import { resolveSystemDir } from "@/lib/engine";
+import { acquirePython } from "@/lib/python-slot";
 
 export async function loadApplicableCodes(dataDir: string, timeoutMs: number): Promise<Map<string, string[]> | null> {
   const systemDir = await resolveSystemDir();
@@ -32,11 +33,19 @@ function spawnExplain(
   dataDir: string,
   timeoutMs: number,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
+  const release = acquirePython();
   return new Promise((resolve, reject) => {
+    let released = false;
+    const finish = () => {
+      if (released) return;
+      released = true;
+      release();
+    };
     const child = spawn("python3", [script, dataDir], { cwd: systemDir });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
+      finish();
       child.kill("SIGKILL");
       reject(new Error("explain timed out"));
     }, timeoutMs);
@@ -50,10 +59,12 @@ function spawnExplain(
     });
     child.on("error", (error) => {
       clearTimeout(timer);
+      finish();
       reject(error);
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      finish();
       resolve({ code: code ?? 1, stdout, stderr });
     });
   });

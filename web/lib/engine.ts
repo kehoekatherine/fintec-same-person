@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
+import { acquirePython } from "@/lib/python-slot";
 import { parseResolutions } from "@/lib/resolutions";
 import type { Resolution } from "@/lib/types";
 
@@ -83,11 +84,19 @@ function spawnRun(
   timeoutMs: number,
 ): Promise<{ code: number; stderr: string; stdout: string }> {
   const runner = path.join(systemDir, "run");
+  const release = acquirePython();
   return new Promise((resolve, reject) => {
+    let released = false;
+    const finish = () => {
+      if (released) return;
+      released = true;
+      release();
+    };
     const child = spawn("/bin/sh", [runner, dataDir, output], { cwd: systemDir });
     let stderr = "";
     let stdout = "";
     const timer = setTimeout(() => {
+      finish();
       child.kill("SIGKILL");
       reject(new DeskError("The resolver timed out.", { status: 500 }));
     }, timeoutMs);
@@ -101,6 +110,7 @@ function spawnRun(
     });
     child.on("error", (error) => {
       clearTimeout(timer);
+      finish();
       reject(
         new DeskError("The desk could not start the Python resolver.", {
           status: 500,
@@ -110,6 +120,7 @@ function spawnRun(
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      finish();
       resolve({ code: code ?? 1, stderr, stdout });
     });
   });

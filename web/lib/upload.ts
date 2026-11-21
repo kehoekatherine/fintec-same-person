@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { readCloseness, readComparison } from "@/lib/closeness";
 import { parseCsv, stableId } from "@/lib/csv";
-import { MISSING_DATA_FOLDER, findDevPack } from "@/lib/data-pack";
+import { MISSING_DATA_FOLDER, findDevPack, publishedHost } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
 import { loadApplicableCodes } from "@/lib/grounds";
@@ -89,7 +89,9 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
       source: "upload",
       mode: "recorded",
       filename,
-      notice: `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are checked against the development customers.jsonl and are not invented. They stay in this browser session and are not saved.`,
+      notice: publishedHost()
+        ? `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are not checked against a private customer file.`
+        : `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are checked against the development customers.jsonl and are not invented. They stay in this browser session and are not saved.`,
       rows,
     };
   }
@@ -200,9 +202,14 @@ async function scoreBundle(bundle: HitBundle): Promise<{
     if (id) customerIds.add(id);
   }
   const hitsOnly = (bundle.extras.customers?.length ?? 0) === 0;
-  const pack = hitsOnly ? await findDevPack() : null;
+  const pack = hitsOnly && !publishedHost() ? await findDevPack() : null;
   if (hitsOnly && !pack) {
-    throw new DeskError(`${MISSING_DATA_FOLDER} A hits-only file is scored against that folder.`, { status: 404 });
+    throw new DeskError(
+      publishedHost()
+        ? "A hits-only file cannot be scored on this public desk."
+        : `${MISSING_DATA_FOLDER} A hits-only file is scored against that folder.`,
+      { status: 404 },
+    );
   }
   const dir = await mkdtemp(path.join(tmpdir(), "screening-upload-"));
   try {
@@ -227,9 +234,16 @@ async function scoreBundle(bundle: HitBundle): Promise<{
     } else if (hitsOnly && pack) {
       await symlink(path.join(pack, "name_variants.json"), variantsPath);
     } else {
-      const packDir = await findDevPack();
-      if (!packDir) throw new DeskError(MISSING_DATA_FOLDER, { status: 404 });
-      await symlink(path.join(packDir, "name_variants.json"), variantsPath);
+      const packDir = publishedHost() ? null : await findDevPack();
+      if (packDir) {
+        await symlink(path.join(packDir, "name_variants.json"), variantsPath);
+      } else {
+        await writeFile(
+          variantsPath,
+          JSON.stringify({ groups: [], company_legal_forms: [] }),
+          "utf8",
+        );
+      }
     }
     const rows = await runEngineOn(dir, 180_000);
     const codes = await loadApplicableCodes(dir, 180_000);
@@ -240,6 +254,7 @@ async function scoreBundle(bundle: HitBundle): Promise<{
 }
 
 async function markCustomers(rows: ResultRow[]): Promise<ResultRow[]> {
+  if (publishedHost()) return rows;
   const index = await loadPackIndex().catch(() => null);
   return rows.map((row) => ({ ...row, customerInFile: customerPresence(index, row.customerRecordId) }));
 }

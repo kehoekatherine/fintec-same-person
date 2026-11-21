@@ -2,6 +2,7 @@ import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { readCloseness, readComparison } from "@/lib/closeness";
 import { parseCsv, stableId } from "@/lib/csv";
 import { findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
@@ -379,6 +380,7 @@ function asResult(row: Record<string, unknown>, index: number): ResultRow {
   }
   const name = stringOf(row.name);
   const reason = stringOf(row.reason) ?? "";
+  const comparison = readComparison(row.comparison);
   return {
     hitId: stringOf(row.hit_id) ?? stableId("H", `${index}|${name ?? ""}|${decision}|${reason}`),
     alertId: stringOf(row.alert_id) ?? "",
@@ -388,6 +390,8 @@ function asResult(row: Record<string, unknown>, index: number): ResultRow {
     customerInFile: null,
     reason,
     evidence: evidenceOf(row.evidence),
+    comparison,
+    closeness: readCloseness(row.closeness, comparison, decision),
     name,
     listedName: stringOf(row.listed_name),
     customerDob: stringOf(row.customer_dob) ?? stringOf(row.dob),
@@ -405,6 +409,8 @@ export function toResultRow(row: Resolution, name: string | null = null): Result
     customerInFile: null,
     reason: row.reason,
     evidence: row.evidence,
+    comparison: row.comparison,
+    closeness: row.closeness,
     name,
     listedName: null,
     customerDob: null,

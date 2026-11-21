@@ -600,6 +600,7 @@ class Person:
 class HitFacts:
     names: list[list[str]]
     raw_name: str
+    raw_aliases: list[str]
     countries: list[str]
     dobs: list[Partial]
     dob_origin: str
@@ -616,6 +617,8 @@ class Outcome:
     customer_record_id: str | None
     reason: str
     evidence: list[str]
+    comparison: dict
+    closeness: dict | None
 
 
 def read_world(data: Path):
@@ -1111,6 +1114,7 @@ class World:
         facts = HitFacts(
             names=parsed,
             raw_name=hit.get("name") or "",
+            raw_aliases=[alias for alias in (hit.get("aliases") or []) if isinstance(alias, str) and alias.strip()],
             countries=countries,
             dobs=dobs,
             dob_origin=origin,
@@ -1198,13 +1202,24 @@ def _dob_clause(person: Person, facts: HitFacts) -> str:
     return f"The customer's date of birth is {dob}{source} but {where}."
 
 
-def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Partial | None) -> tuple[str, list[str], list[str]]:
-    """Return the reason code, the evidence ids, and the reason sentences."""
-    company = person.kind == "company" or facts.kind == "company"
+# Closeness is how near the compared identity facts are. It is not a finding of guilt.
+# Points are fixed: a fact the resolver already called a match, a contradiction, or unsettled.
+CLOSENESS_POINTS = {
+    "name": {"match": 40, "undefined": 15, "different": 0},
+    "date_of_birth": {"match": 30, "undefined": 10, "different": 0},
+    "country": {"match": 30, "undefined": 10, "different": 0},
+}
+
+
+def name_agreement(world: World, person: Person, facts: HitFacts) -> tuple[bool, bool, str]:
+    """Return name_agree, name_mismatch, and match | different | undefined.
+
+    name_agree and name_mismatch are the same booleans the decision uses.
+    Undefined is a name the resolver cannot treat as agreement or disagreement:
+    missing, or an individual name with fewer than two real parts.
+    """
     comparable_names = [person.verified_parts] if person.verified_parts else person.declared_names
     name_agree = world.names.any_agree(comparable_names, facts.names) if comparable_names else False
-    # Individuals with fewer than two real name parts can be neither confirmed nor cleared on name.
-    # A company often has one distinctive word once the legal form is removed.
     if person.kind != "company":
         verified_too_thin = bool(person.verified_parts) and len(person.verified_parts) < 2
         declared_too_thin = not person.verified_parts and not any(len(parts) >= 2 for parts in person.declared_names)
@@ -1212,7 +1227,125 @@ def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Parti
             name_agree = False
         name_mismatch = bool(person.verified_parts) and len(person.verified_parts) >= 2 and not world.names.any_agree([person.verified_parts], facts.names)
     else:
+        verified_too_thin = False
+        declared_too_thin = False
         name_mismatch = bool(person.verified_parts) and not world.names.any_agree([person.verified_parts], facts.names)
+    if name_agree:
+        status = "match"
+    elif not comparable_names or not facts.names or verified_too_thin or declared_too_thin:
+        status = "undefined"
+    else:
+        status = "different"
+    return name_agree, name_mismatch, status
+
+
+def _customer_name_text(world: World, person: Person) -> str:
+    if person.verified_raw and person.verified_raw.strip():
+        return person.verified_raw.strip()
+    names: list[str] = []
+    seen: set[str] = set()
+    for record_id in person.record_ids:
+        customer = world.customers.get(record_id)
+        if not customer or not customer.raw_names:
+            continue
+        raw = customer.raw_names[0].strip()
+        if raw and raw not in seen:
+            seen.add(raw)
+            names.append(raw)
+    return "; ".join(names) if names else "Not given"
+
+
+def _hit_name_text(facts: HitFacts) -> str:
+    name = facts.raw_name.strip()
+    aliases = []
+    seen = {name}
+    for alias in facts.raw_aliases:
+        text = alias.strip()
+        if text and text not in seen:
+            seen.add(text)
+            aliases.append(text)
+    if not name and not aliases:
+        return "Not given"
+    if aliases:
+        listed = name or aliases[0]
+        extra = aliases if name else aliases[1:]
+        if extra:
+            return f"{listed}; aliases {', '.join(extra)}"
+        return listed
+    return name
+
+
+def _customer_dob_text(person: Person) -> str:
+    if not person.dobs:
+        return "Not given"
+    return ", ".join(item.iso() for item in person.dobs)
+
+
+def _hit_dob_text(facts: HitFacts) -> str:
+    if not facts.dobs:
+        return "Not given"
+    return _format_hit_dobs(facts)
+
+
+def _country_text(keys: list[str]) -> str:
+    if not keys:
+        return "Not given"
+    return join_countries(keys)
+
+
+def _comparison(world: World, person: Person, facts: HitFacts, name_status: str, relation: str, overlap: list[str], disjoint: bool) -> dict:
+    if relation == "agree":
+        dob_status = "match"
+    elif relation == "contradict":
+        dob_status = "different"
+    else:
+        # Missing, or a gap of one year: the resolver treats both as unsettled.
+        dob_status = "undefined"
+    if overlap:
+        country_status = "match"
+    elif disjoint:
+        country_status = "different"
+    else:
+        country_status = "undefined"
+    return {
+        "name": {"customer": _customer_name_text(world, person), "hit": _hit_name_text(facts), "status": name_status},
+        "date_of_birth": {"customer": _customer_dob_text(person), "hit": _hit_dob_text(facts), "status": dob_status},
+        "country": {"customer": _country_text(person.countries), "hit": _country_text(facts.countries), "status": country_status},
+    }
+
+
+def _unresolved_comparison(facts: HitFacts, customer: str) -> dict:
+    return {
+        "name": {"customer": customer, "hit": _hit_name_text(facts), "status": "undefined"},
+        "date_of_birth": {"customer": customer, "hit": _hit_dob_text(facts), "status": "undefined"},
+        "country": {"customer": customer, "hit": _country_text(facts.countries), "status": "undefined"},
+    }
+
+
+def _closeness(comparison: dict) -> dict:
+    name = CLOSENESS_POINTS["name"][comparison["name"]["status"]]
+    dob = CLOSENESS_POINTS["date_of_birth"][comparison["date_of_birth"]["status"]]
+    country = CLOSENESS_POINTS["country"][comparison["country"]["status"]]
+    total = name + dob + country
+    if total >= 80:
+        band = "Close"
+    elif total >= 40:
+        band = "Partial"
+    else:
+        band = "Distant"
+    return {"total": total, "band": band, "name": name, "date_of_birth": dob, "country": country}
+
+
+def _scored(decision: str, comparison: dict) -> dict | None:
+    if decision not in {"REVIEW", "SAME_ENTITY"}:
+        return None
+    return _closeness(comparison)
+
+
+def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Partial | None) -> tuple[str, list[str], list[str], dict, dict | None]:
+    """Return the reason code, the evidence ids, the reason sentences, the comparison, and closeness."""
+    company = person.kind == "company" or facts.kind == "company"
+    name_agree, name_mismatch, name_status = name_agreement(world, person, facts)
     relation = "unknown" if company and facts.dob_origin != "field" else dob_relation(person.dobs, facts.dobs)
     if company and facts.dob_origin == "field":
         relation = dob_relation(person.dobs, facts.dobs)
@@ -1244,16 +1377,17 @@ def decide_one(world: World, person: Person, facts: HitFacts, screened_at: Parti
         codes.append("NAME_MISMATCH_VERIFIED")
     if location_clear:
         codes.append("LOCATION_MISMATCH")
+    compared = _comparison(world, person, facts, name_status, relation, overlap, disjoint)
     if codes:
         code = next(item for item in CODE_PRIORITY if item in codes)
-        return code, _evidence(person, facts, code, codes), _different_reason(person, facts, code, age_cap, overlap)
+        return code, _evidence(person, facts, code, codes), _different_reason(person, facts, code, age_cap, overlap), compared, _scored(DECISION_OF[code], compared)
 
     if person.kind == "company" and name_agree and overlap and not type_mismatch:
-        return "NAME_LOCATION_MATCH", _evidence(person, facts, "NAME_LOCATION_MATCH", []), _same_company_reason(world, person, facts, overlap)
+        return "NAME_LOCATION_MATCH", _evidence(person, facts, "NAME_LOCATION_MATCH", []), _same_company_reason(world, person, facts, overlap), compared, _scored("SAME_ENTITY", compared)
     if person.kind != "company" and name_agree and relation == "agree" and not disjoint:
         code = "NAME_DOB_LOCATION_MATCH" if overlap else "NAME_DOB_MATCH"
-        return code, _evidence(person, facts, code, []), _same_person_reason(world, person, facts, overlap, code)
-    return "INSUFFICIENT_DATA", _evidence(person, facts, "INSUFFICIENT_DATA", []), _review_reason(world, person, facts, name_agree, overlap, relation, disjoint)
+        return code, _evidence(person, facts, code, []), _same_person_reason(world, person, facts, overlap, code), compared, _scored("SAME_ENTITY", compared)
+    return "INSUFFICIENT_DATA", _evidence(person, facts, "INSUFFICIENT_DATA", []), _review_reason(world, person, facts, name_agree, overlap, relation, disjoint), compared, _scored("REVIEW", compared)
 
 
 def _overlapping_sources(person: Person, facts: HitFacts) -> list[str]:
@@ -1394,12 +1528,15 @@ def decide_hit(world: World, alert: dict, hit: dict) -> Outcome:
     screened_at = parse_date(alert.get("screened_at") if alert else None)
     people = world.people_for_alert(alert) if alert else []
     if not people:
+        compared = _unresolved_comparison(facts, "Not given")
         return Outcome(
             "REVIEW",
             "INSUFFICIENT_DATA",
             None,
             "No customer record could be resolved from the alert's link or from the screened name, date of birth, country and city. Without a customer to compare, the hit can be neither cleared nor confirmed.",
             [],
+            compared,
+            _scored("REVIEW", compared),
         )
     people = sorted(people, key=lambda person: person.seed)
     outcomes = [(person, decide_one(world, person, facts, screened_at)) for person in people]
@@ -1407,19 +1544,22 @@ def decide_hit(world: World, alert: dict, hit: dict) -> Outcome:
     decisions = {DECISION_OF[code] for code in codes}
     if len(people) > 1 and len(decisions) > 1:
         evidence: list[str] = []
-        for person, (_code, ids, _sentences) in outcomes:
+        for person, (_code, ids, _sentences, _comparison, _closeness) in outcomes:
             for record_id in person.record_ids:
                 if record_id not in evidence:
                     evidence.append(record_id)
             for item in ids:
                 if item not in evidence:
                     evidence.append(item)
+        compared = _unresolved_comparison(facts, "More than one customer")
         return Outcome(
             "REVIEW",
             "AMBIGUOUS_CUSTOMER_RECORD",
             "AMBIGUOUS",
             "More than one person in the system of record fits this alert, and the comparisons do not reach the same decision. The hit stays with a reviewer and the customer record is ambiguous.",
             evidence,
+            compared,
+            _scored("REVIEW", compared),
         )
     # Several people can share a decision while naming different grounds. A fixed order
     # makes that choice stable across runs.
@@ -1430,11 +1570,11 @@ def decide_hit(world: World, alert: dict, hit: dict) -> Outcome:
     else:
         code = next(item for item in ("NAME_DOB_LOCATION_MATCH", "NAME_LOCATION_MATCH", "NAME_DOB_MATCH", "INSUFFICIENT_DATA") if item in codes)
     chosen = next(item for item in outcomes if item[1][0] == code)
-    person, (_code, evidence, sentences) = chosen
+    person, (_code, evidence, sentences, comparison, closeness) = chosen
     if len(people) > 1:
         # Same decision either way. Any record in the cluster would be wrong to pick, so the id is ambiguous.
         evidence = []
-        for _other, (_item_code, ids, _sentences) in outcomes:
+        for _other, (_item_code, ids, _sentences, _comparison, _closeness) in outcomes:
             for item in ids:
                 if item not in evidence:
                     evidence.append(item)
@@ -1443,7 +1583,7 @@ def decide_hit(world: World, alert: dict, hit: dict) -> Outcome:
     else:
         record_id = person.seed
     reason = " ".join(sentences)
-    return Outcome(DECISION_OF[code], code, record_id, reason, evidence)
+    return Outcome(DECISION_OF[code], code, record_id, reason, evidence, comparison, closeness)
 
 
 def resolve(data: Path) -> list[dict]:
@@ -1452,7 +1592,7 @@ def resolve(data: Path) -> list[dict]:
     for hit in world.hits:
         alert = world.alerts.get(hit["alert_id"])
         outcome = decide_hit(world, alert, hit)
-        rows.append({
+        row = {
             "hit_id": hit["hit_id"],
             "alert_id": hit["alert_id"],
             "decision": outcome.decision,
@@ -1460,7 +1600,11 @@ def resolve(data: Path) -> list[dict]:
             "customer_record_id": outcome.customer_record_id,
             "reason": outcome.reason,
             "evidence": outcome.evidence,
-        })
+            "comparison": outcome.comparison,
+        }
+        if outcome.closeness is not None:
+            row["closeness"] = outcome.closeness
+        rows.append(row)
     return rows
 
 

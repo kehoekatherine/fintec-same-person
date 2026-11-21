@@ -2,14 +2,14 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 
+import { CaseAssessment, ClosenessLine } from "@/components/case-assessment";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { sentences } from "@/lib/format";
 import { filterResults } from "@/lib/filter-results";
-import { DECISION_LABEL, FILTERS, reasonLabel } from "@/lib/labels";
+import { DECISION_LABEL, FILTERS } from "@/lib/labels";
 import type { FilterId, ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
@@ -106,11 +106,12 @@ export function ResultsTable({
         <EmptyResults query={query} onReset={onReset} />
       ) : (
         <div className="border border-border bg-card">
-          <Table className="min-w-[46rem]">
+          <Table className="min-w-[56rem]">
             <TableCaption>{caption}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Decision</TableHead>
+                <TableHead>Closeness</TableHead>
                 {showName ? <TableHead>Customer name</TableHead> : null}
                 <TableHead>Hit</TableHead>
                 <TableHead>Alert</TableHead>
@@ -142,6 +143,11 @@ export function ResultsTable({
                       <Badge className={cn("h-6 px-2", DECISION_BADGE[item.row.decision])}>
                         {DECISION_LABEL[item.row.decision]}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-64">
+                      {item.row.closeness ? (
+                        <ClosenessLine closeness={item.row.closeness} testId={`closeness-${item.row.hitId}`} />
+                      ) : null}
                     </TableCell>
                     {showName ? (
                       <TableCell className="max-w-48">
@@ -206,51 +212,39 @@ export function ResultsTable({
 }
 
 function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
-  const lines = sentences(row.reason || "No reason was recorded.");
   return (
-    <article data-testid="result-detail" className="border-y border-r border-l-4 border-border border-l-primary bg-card px-5 py-5">
-      <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Selected row</p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <h2 className="font-heading text-2xl">{row.name || row.listedName || row.hitId}</h2>
-        <Badge className={cn("h-6 px-2", DECISION_BADGE[row.decision])}>{DECISION_LABEL[row.decision]}</Badge>
-        {row.reasonCode ? (
-          <span className="font-mono text-xs text-muted-foreground">{row.reasonCode}</span>
-        ) : null}
-      </div>
-      {row.reasonCode ? <p className="mt-1 text-sm text-muted-foreground">{reasonLabel(row.reasonCode)}</p> : null}
-      <p className="mt-2 font-mono text-xs text-muted-foreground">
-        {row.hitId}
-        {row.alertId ? ` · ${row.alertId}` : ""} · {customerLabel(row)}
-      </p>
-      {row.listedName || row.customerDob || row.customerCountry ? (
-        <p className="mt-2 text-sm leading-6 text-foreground">
-          {row.listedName ? `Listed name ${row.listedName}` : null}
-          {row.customerDob ? `${row.listedName ? " · " : ""}Born ${row.customerDob}` : null}
-          {row.customerCountry ? ` · ${row.customerCountry}` : null}
+    <article data-testid="result-detail" className="grid gap-4">
+      <div>
+        <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Selected row</p>
+        <h2 className="mt-2 font-heading text-2xl">{row.name || row.listedName || row.hitId}</h2>
+        <p className="mt-1 font-mono text-xs text-muted-foreground">
+          {row.hitId}
+          {row.alertId ? ` · ${row.alertId}` : ""} · {customerLabel(row)}
         </p>
-      ) : null}
-      <div className="mt-4 grid gap-3">
-        {lines.map((line) => (
-          <p key={line} className="text-base leading-7 text-foreground">
-            {line}
-          </p>
-        ))}
       </div>
-      <div className="mt-4">
-        <h3 className="text-sm font-medium text-foreground">Evidence</h3>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{note}</p>
-        {row.evidence.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No evidence ids were recorded.</p>
-        ) : (
-          <ul className="mt-2 grid gap-1">
-            {row.evidence.map((id) => (
-              <li key={id} className="font-mono text-xs text-foreground">
-                {id}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <CaseAssessment
+        decision={row.decision}
+        reasonCode={row.reasonCode}
+        reason={row.reason}
+        comparison={row.comparison}
+        closeness={row.closeness}
+      >
+        <section aria-label="Data sources">
+          <h3 className="font-heading text-2xl">Data sources</h3>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">{note}</p>
+          {row.evidence.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No evidence ids were recorded.</p>
+          ) : (
+            <ul className="mt-2 grid gap-1">
+              {row.evidence.map((id) => (
+                <li key={id} className="font-mono text-xs text-foreground">
+                  {id}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </CaseAssessment>
     </article>
   );
 }

@@ -16,7 +16,14 @@ import { nextSort, sortRows, type SortKey, type SortState } from "@/lib/list-sor
 import type { FilterId, ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
-const PAGE_SIZE = 25;
+const PAGE_CHOICES = [
+  { id: "25", label: "25", size: 25 },
+  { id: "50", label: "50", size: 50 },
+  { id: "100", label: "100", size: 100 },
+  { id: "all", label: "All", size: Number.POSITIVE_INFINITY },
+] as const;
+
+type PageChoice = (typeof PAGE_CHOICES)[number]["id"];
 
 export function ResultsTable({
   rows,
@@ -48,18 +55,21 @@ export function ResultsTable({
     () => ordered.map((row, index) => ({ row, key: `${row.hitId}:${index}` })),
     [ordered],
   );
-  const scope = `${filter}\u0000${query}\u0000${sort?.key ?? ""}\u0000${sort?.dir ?? ""}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
+  const [pageChoice, setPageChoice] = useState<PageChoice>("25");
+  const chosen = PAGE_CHOICES.find((choice) => choice.id === pageChoice)?.size ?? 25;
+  const pageSize = pageChoice === "all" ? Math.max(keyed.length, 1) : chosen;
+  const scope = `${filter}\u0000${query}\u0000${sort?.key ?? ""}\u0000${sort?.dir ?? ""}\u0000${pageChoice}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
   const selectedIndex = activeHitId ? keyed.findIndex((item) => item.row.hitId === activeHitId) : -1;
   const [page, setPage] = useState(1);
   const [pageScope, setPageScope] = useState(scope);
   const [followedHit, setFollowedHit] = useState<string | null>(activeHitId);
   if (pageScope !== scope) {
     setPageScope(scope);
-    setPage(selectedIndex >= 0 ? Math.floor(selectedIndex / PAGE_SIZE) + 1 : 1);
+    setPage(selectedIndex >= 0 ? Math.floor(selectedIndex / pageSize) + 1 : 1);
   }
   if (activeHitId !== followedHit) {
     setFollowedHit(activeHitId);
-    if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / PAGE_SIZE) + 1);
+    if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / pageSize) + 1);
   }
 
   useEffect(() => {
@@ -71,10 +81,10 @@ export function ResultsTable({
     scroller.scrollTop += top - 8;
   }, [activeHitId, page]);
 
-  const pageCount = Math.max(1, Math.ceil(keyed.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(keyed.length / pageSize));
   const safePage = Math.min(page, pageCount);
-  const start = (safePage - 1) * PAGE_SIZE;
-  const visible = keyed.slice(start, start + PAGE_SIZE);
+  const start = (safePage - 1) * pageSize;
+  const visible = keyed.slice(start, start + pageSize);
   const showName = rows.some((row) => row.name || row.listedName);
   const columnCount = showName ? 10 : 9;
 
@@ -241,31 +251,51 @@ export function ResultsTable({
           </Table>
         </div>
       )}
-      {pageCount > 1 ? (
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 px-3"
-            data-testid="page-prev"
-            disabled={safePage <= 1}
-            onClick={() => setPage(safePage - 1)}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 px-3"
-            data-testid="page-next"
-            disabled={safePage >= pageCount}
-            onClick={() => setPage(safePage + 1)}
-          >
-            Next
-          </Button>
-          <p className="text-sm text-muted-foreground">
-            Page {safePage} of {pageCount}
-          </p>
+      {keyed.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            Show
+            <select
+              data-testid="page-size"
+              aria-label="Records per page"
+              value={pageChoice}
+              onChange={(event) => setPageChoice(event.target.value as PageChoice)}
+              className="h-10 border border-border bg-card px-3 text-sm text-foreground"
+            >
+              {PAGE_CHOICES.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {pageCount > 1 ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 px-3"
+                data-testid="page-prev"
+                disabled={safePage <= 1}
+                onClick={() => setPage(safePage - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 px-3"
+                data-testid="page-next"
+                disabled={safePage >= pageCount}
+                onClick={() => setPage(safePage + 1)}
+              >
+                Next
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Page {safePage} of {pageCount}
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
     </section>

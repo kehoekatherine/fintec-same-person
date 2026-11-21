@@ -22,6 +22,7 @@ export type EvidenceRecord = {
   kind: string;
   file: string;
   fields: FieldRow[];
+  note?: string | null;
 };
 
 export type ScreenedCustomer = {
@@ -62,6 +63,27 @@ export type DeskPayload = {
   notice: string;
   ranAt: string;
   cases: DeskCase[];
+};
+
+export type QueueId = "dev" | "brief" | "upload";
+
+export type ResultRow = {
+  hitId: string;
+  alertId: string;
+  decision: Decision;
+  reasonCode: string;
+  customerRecordId: string | null;
+  reason: string;
+  evidence: string[];
+  name: string | null;
+};
+
+export type ResultPayload = {
+  source: "development" | "upload";
+  mode?: "recorded" | "scored";
+  filename?: string;
+  notice: string;
+  rows: ResultRow[];
 };
 
 export type DeskFailure = {

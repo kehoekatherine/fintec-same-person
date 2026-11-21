@@ -4,16 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
 import { blank, formatWhen, sentences } from "@/lib/format";
 import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
 import type { DeskCase } from "@/lib/types";
 import { cn } from "cn";
-
-const BAND: Record<DeskCase["resolution"]["decision"], string> = {
-  DIFFERENT_ENTITY: "bg-[#e5f3eb] text-[#143d2a]",
-  SAME_ENTITY: "bg-[#f8e6e2] text-[#6e2c28]",
-  REVIEW: "bg-[#f8efd4] text-[#6a4510]",
-};
 
 export function CaseView({
   item,
@@ -58,30 +53,30 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
           <h2 className="mt-1 font-heading text-3xl leading-tight tracking-tight">{item.screened.name}</h2>
           <p className="mt-1 text-base text-muted-foreground">against {item.hit.name}</p>
         </div>
-        <Button type="button" variant="outline" className="h-11 shrink-0 px-3 lg:hidden" onClick={onBack}>
+        <Button type="button" variant="outline" className="h-10 shrink-0 px-3 lg:hidden" onClick={onBack}>
           <ArrowLeft />
           Queue
         </Button>
       </div>
 
-      <div className={cn("rounded-xl px-4 py-4", BAND[resolution.decision])}>
-        <p className="text-xs font-medium tracking-[0.16em] uppercase">Decision</p>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <p className="font-heading text-3xl">{DECISION_LABEL[resolution.decision]}</p>
-          <Badge variant="outline" className="h-6 border-current/30 bg-white/50 font-mono text-current">
+      <div className={cn("border-y border-r border-l-4 border-border bg-card px-5 py-5", DECISION_RULE[resolution.decision])}>
+        <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Decision</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p className="font-heading text-3xl text-foreground">{DECISION_LABEL[resolution.decision]}</p>
+          <Badge variant="outline" className={cn("h-6 font-mono", DECISION_BADGE[resolution.decision])}>
             {resolution.reason_code}
           </Badge>
         </div>
-        <p className="mt-1 text-sm">{reasonLabel(resolution.reason_code)}</p>
-        <p className="mt-2 text-sm">{DECISION_MEANING[resolution.decision]}</p>
-        <p className="mt-2 font-mono text-xs">
+        <p className="mt-2 text-sm text-foreground">{reasonLabel(resolution.reason_code)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{DECISION_MEANING[resolution.decision]}</p>
+        <p className="mt-3 font-mono text-xs text-muted-foreground">
           Customer {resolution.customer_record_id ?? "not resolved"}
         </p>
       </div>
 
       <div className="grid gap-3">
         {lines.map((line) => (
-          <p key={line} className="font-heading text-lg leading-8 text-foreground sm:text-xl">
+          <p key={line} className="text-base leading-7 text-foreground">
             {line}
           </p>
         ))}

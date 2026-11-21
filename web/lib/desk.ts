@@ -1,8 +1,9 @@
-import { spawn } from "node:child_process";
-import { access, readFile, realpath } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 
+import { DeskError } from "@/lib/errors";
+import { runEngineOn } from "@/lib/engine";
+import { parseResolutions } from "@/lib/resolutions";
 import type {
   DeskCase,
   DeskPayload,
@@ -12,6 +13,8 @@ import type {
   ScreenedCustomer,
   WatchlistHit,
 } from "@/lib/types";
+
+export { DeskError } from "@/lib/errors";
 
 const FIXTURE_DIR = path.join(process.cwd(), "fixtures", "brief");
 
@@ -104,23 +107,6 @@ const FIELD_ORDER = Object.keys(FIELD_LABELS);
 
 const ALWAYS_ON_CUSTOMER = ["full_name", "dob", "residence_country", "nationality", "city"];
 
-export class DeskError extends Error {
-  readonly status: number;
-  readonly code: "missing" | "failed";
-  readonly detail?: string;
-
-  constructor(
-    message: string,
-    options?: { status?: number; detail?: string; code?: "missing" | "failed" },
-  ) {
-    super(message);
-    this.name = "DeskError";
-    this.status = options?.status ?? 500;
-    this.code = options?.code ?? "failed";
-    this.detail = options?.detail;
-  }
-}
-
 type Row = Record<string, unknown>;
 
 export async function loadDesk(options: { allowSnapshot: boolean }): Promise<DeskPayload> {
@@ -154,78 +140,10 @@ async function assertFixtureStaysInApp(): Promise<void> {
   }
 }
 
-async function resolveScript(): Promise<string | null> {
-  const candidates = [
-    path.resolve(process.cwd(), "..", "system", "resolve.py"),
-    path.resolve(process.cwd(), "system", "resolve.py"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-    } catch {
-      continue;
-    }
-    const directory = path.dirname(candidate);
-    if (path.basename(directory) !== "system") continue;
-    return candidate;
-  }
-  return null;
-}
-
 async function runEngine(): Promise<Resolution[]> {
-  const script = await resolveScript();
-  if (!script) {
-    throw new DeskError(
+  return runEngineOn(FIXTURE_DIR, 20_000, {
+    missingMessage:
       "The Python resolver is not available in this deployment, so the fixture cannot be re-run.",
-      { status: 503, code: "missing" },
-    );
-  }
-  const output = path.join(tmpdir(), `screening-brief-${process.pid}.jsonl`);
-  const { code, stderr } = await spawnResolver(script, output);
-  if (code !== 0) {
-    throw new DeskError("The resolver stopped without writing a queue.", {
-      status: 500,
-      detail: stderr.trim() || `system/run exited with status ${code}.`,
-    });
-  }
-  try {
-    const text = await readFile(output, "utf8");
-    return parseResolutions(text);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "The output could not be read.";
-    throw new DeskError("The resolver finished, but the desk could not read its output.", {
-      status: 500,
-      detail: message,
-    });
-  }
-}
-
-function spawnResolver(script: string, output: string): Promise<{ code: number; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("python3", [script, FIXTURE_DIR, output], {
-      cwd: path.dirname(script),
-    });
-    let stderr = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new DeskError("The resolver timed out.", { status: 500 }));
-    }, 20_000);
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(
-        new DeskError("The desk could not start the Python resolver.", {
-          status: 500,
-          detail: error.message,
-        }),
-      );
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code: code ?? 1, stderr });
-    });
   });
 }
 
@@ -240,25 +158,6 @@ async function readSnapshot(): Promise<Resolution[]> {
       detail: message,
     });
   }
-}
-
-function parseResolutions(text: string): Resolution[] {
-  const rows: Resolution[] = [];
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    const parsed = JSON.parse(line) as Resolution;
-    if (!parsed.hit_id || !parsed.decision || !parsed.reason_code) {
-      throw new DeskError("A resolver line was missing hit_id, decision, or reason_code.", {
-        status: 500,
-      });
-    }
-    rows.push({
-      ...parsed,
-      evidence: Array.isArray(parsed.evidence) ? parsed.evidence : [],
-      customer_record_id: parsed.customer_record_id ?? null,
-    });
-  }
-  return rows;
 }
 
 async function readWorld(): Promise<Map<string, Row[]>> {

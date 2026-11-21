@@ -1,3 +1,4 @@
+import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,12 +6,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { DECISION_LABEL, FILTERS } from "@/lib/labels";
 import type { DeskCase, FilterId } from "@/lib/types";
 import { cn } from "cn";
-
-const TONE: Record<DeskCase["resolution"]["decision"], string> = {
-  DIFFERENT_ENTITY: "bg-clear text-white",
-  SAME_ENTITY: "bg-primary text-primary-foreground",
-  REVIEW: "bg-review text-white",
-};
 
 export function QueuePanel({
   cases,
@@ -48,7 +43,7 @@ export function QueuePanel({
               variant={pressed ? "default" : "outline"}
               aria-pressed={pressed}
               data-testid={`filter-${item.id}`}
-              className="h-11 px-3"
+              className="h-10 px-3"
               onClick={() => onFilter(item.id)}
             >
               {item.label}
@@ -66,7 +61,7 @@ export function QueuePanel({
           onChange={(event) => onQuery(event.target.value)}
           placeholder="Name, hit, or customer"
           aria-label="Search the queue"
-          className="h-11 bg-card"
+          className="h-10 bg-card"
         />
       </label>
       <p className="mb-2 text-sm text-muted-foreground" aria-live="polite">
@@ -88,14 +83,12 @@ export function QueuePanel({
                     aria-pressed={active}
                     data-testid={`hit-${item.hitId}`}
                     className={cn(
-                      "h-auto min-h-16 w-full items-start justify-start gap-3 px-3 py-3 text-left whitespace-normal",
-                      active
-                        ? "border-primary bg-secondary shadow-[inset_3px_0_0_0_var(--primary)]"
-                        : "bg-card",
+                      "h-auto min-h-16 w-full items-start justify-start gap-3 border-border px-3 py-3 text-left whitespace-normal",
+                      active ? "border-primary bg-muted" : "bg-card",
                     )}
                     onClick={() => onOpen(item.hitId)}
                   >
-                    <Badge className={cn("mt-0.5 h-6 px-2", TONE[decision])}>{DECISION_LABEL[decision]}</Badge>
+                    <Badge className={cn("mt-0.5 h-6 px-2", DECISION_BADGE[decision])}>{DECISION_LABEL[decision]}</Badge>
                     <span className="grid min-w-0 gap-0.5">
                       <span className="font-heading text-base leading-snug text-foreground">
                         {item.screened.name}
@@ -124,10 +117,10 @@ function EmptyQueue({ query, onReset }: { query: string; onReset: () => void }) 
     ? `Nothing in the fixture matches “${query.trim()}” under this filter.`
     : "No hits in the fixture fall under this filter.";
   return (
-    <div data-testid="empty" className="rounded-xl bg-card px-4 py-6 ring-1 ring-foreground/10">
+    <div data-testid="empty" className="border border-border bg-card px-4 py-6">
       <h2 className="font-heading text-xl">No hits in this view</h2>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
-      <Button type="button" variant="outline" className="mt-4 h-11 px-3" onClick={onReset}>
+      <Button type="button" variant="outline" className="mt-4 h-10 px-3" onClick={onReset}>
         Show every hit
       </Button>
     </div>

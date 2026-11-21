@@ -65,6 +65,8 @@ How a customer is resolved, how a hit is read, and how evidence is chosen is des
 
 The screening desk is a Next.js app in `web/`. It shows those four fictional cases — not a live watchlist — and the decision `system/run` wrote for each one.
 
+The desk has light and dark mode. It lists every recorded decision in `output/dev.jsonl` and the four brief examples, with the customer, hit, notes, checks, and evidence on each brief case. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. The upload stays in the browser session and is not written into the repository.
+
 ```sh
 cd web
 npm install

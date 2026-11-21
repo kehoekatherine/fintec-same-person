@@ -2,12 +2,14 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 
+import { BiasRiskPanel } from "@/components/bias-risk-panel";
 import { DevRecord } from "@/components/dev-record";
 import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { biasRiskForExplanation } from "@/lib/bias-risk";
 import { actionFor, customerFileMessage, groundsToShow, UNCHECKED_GROUNDS, type Explanation } from "@/lib/explanation";
 import { blank, formatWhen, sentences } from "@/lib/format";
 import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
@@ -42,6 +44,7 @@ export function CaseWindow({
 
 function ExplanationBody({ item }: { item: Explanation }) {
   const lines = sentences(item.reason || "No reason was recorded.");
+  const bias = biasRiskForExplanation(item);
   const codes = groundsToShow(item.reasonCode, item.groundsChecked, item.applicableCodes);
   const missing = customerFileMessage(item.customerRecordId, item.customerMissing);
   const customerTitle = item.customerName || item.hitId;
@@ -135,6 +138,12 @@ function ExplanationBody({ item }: { item: Explanation }) {
           </p>
         ))}
       </div>
+
+      {bias ? (
+        <div data-testid="case-conclusion" className="grid items-start gap-3 md:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
+          <BiasRiskPanel score={bias} />
+        </div>
+      ) : null}
 
       {item.screened && item.hit ? (
         <div className="grid gap-3 md:grid-cols-2">

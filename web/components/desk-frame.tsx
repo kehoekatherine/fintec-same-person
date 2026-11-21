@@ -1,37 +1,23 @@
 "use client";
 
 import { RotateCw } from "lucide-react";
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "cn";
 
 export function DeskFrame({
   children,
   onRerun,
   busy = false,
   notice,
-  panel,
-  panelOpen = false,
 }: {
   children: ReactNode;
   onRerun?: () => void;
   busy?: boolean;
   notice?: string | null;
-  panel?: ReactNode;
-  panelOpen?: boolean;
 }) {
-  const mainRef = useRef<HTMLElement>(null);
-  const savedScroll = useRef(0);
-
-  useLayoutEffect(() => {
-    const node = mainRef.current;
-    if (!node) return;
-    if (node.scrollTop !== savedScroll.current) node.scrollTop = savedScroll.current;
-  }, [panelOpen]);
-
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <header className="shrink-0 border-b border-border">
@@ -73,45 +59,9 @@ export function DeskFrame({
           </div>
         </div>
       </header>
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(20rem,32rem)]">
-        <main
-          ref={mainRef}
-          data-testid="queue-scroller"
-          className={cn(
-            "min-h-0 overflow-auto overscroll-y-contain px-4 py-4 sm:px-6",
-            panelOpen && "max-lg:hidden",
-          )}
-          onScroll={(event) => {
-            savedScroll.current = event.currentTarget.scrollTop;
-          }}
-        >
-          {children}
-        </main>
-        <aside
-          data-testid="case-column"
-          data-open={panelOpen ? "true" : "false"}
-          aria-label="Case"
-          className={cn(
-            "min-h-0 overflow-y-auto overscroll-y-contain bg-card lg:border-l lg:border-border",
-            panelOpen
-              ? "fixed inset-0 z-40 h-dvh bg-background lg:static lg:z-auto lg:h-full lg:max-h-full lg:bg-card"
-              : "hidden lg:block lg:h-full",
-          )}
-        >
-          {panel ?? <CasePlaceholder />}
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function CasePlaceholder() {
-  return (
-    <div data-testid="case-placeholder" className="px-5 py-6">
-      <h2 className="font-heading text-2xl text-foreground">Choose a hit</h2>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">
-        Select a row to compare the customer with the watchlist hit.
-      </p>
+      <main data-testid="queue-scroller" className="min-h-0 flex-1 overflow-auto overscroll-y-contain px-4 py-4 sm:px-6">
+        {children}
+      </main>
     </div>
   );
 }

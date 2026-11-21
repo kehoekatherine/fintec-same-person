@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 import { biasRiskForRow } from "@/lib/bias-risk";
@@ -23,6 +23,7 @@ export function ResultsTable({
   query,
   filter,
   activeHitId,
+  detail,
   onQuery,
   onFilter,
   onOpen,
@@ -33,6 +34,7 @@ export function ResultsTable({
   query: string;
   filter: FilterId;
   activeHitId: string | null;
+  detail?: ReactNode;
   onQuery: (query: string) => void;
   onFilter: (filter: FilterId) => void;
   onOpen: (row: ResultRow) => void;
@@ -65,10 +67,8 @@ export function ResultsTable({
     const row = document.querySelector(`[data-testid="result-${CSS.escape(activeHitId)}"]`);
     const scroller = row?.closest("[data-testid='queue-scroller']");
     if (!(row instanceof HTMLElement) || !(scroller instanceof HTMLElement)) return;
-    const rowRect = row.getBoundingClientRect();
-    const box = scroller.getBoundingClientRect();
-    if (rowRect.top < box.top) scroller.scrollTop -= box.top - rowRect.top;
-    else if (rowRect.bottom > box.bottom) scroller.scrollTop += rowRect.bottom - box.bottom;
+    const top = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTop += top - 8;
   }, [activeHitId, page]);
 
   const pageCount = Math.max(1, Math.ceil(keyed.length / PAGE_SIZE));
@@ -76,6 +76,7 @@ export function ResultsTable({
   const start = (safePage - 1) * PAGE_SIZE;
   const visible = keyed.slice(start, start + PAGE_SIZE);
   const showName = rows.some((row) => row.name || row.listedName);
+  const columnCount = (showName ? 10 : 9);
 
   return (
     <section className="flex flex-col gap-3 lg:h-full lg:min-h-0" aria-label={caption} data-testid="results-table">
@@ -158,8 +159,8 @@ export function ResultsTable({
                   bias,
                 });
                 return (
+                  <Fragment key={item.key}>
                   <TableRow
-                    key={item.key}
                     data-testid={`result-${item.row.hitId}`}
                     data-selected={active ? "true" : "false"}
                     aria-selected={active}
@@ -226,6 +227,14 @@ export function ResultsTable({
                       <span className="line-clamp-2">{item.row.reason || "No reason recorded."}</span>
                     </TableCell>
                   </TableRow>
+                  {active && detail ? (
+                    <TableRow className="hover:bg-transparent" data-testid={`case-under-${item.row.hitId}`}>
+                      <TableCell colSpan={columnCount} className="bg-muted/40 p-0">
+                        {detail}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                  </Fragment>
                 );
               })}
             </TableBody>

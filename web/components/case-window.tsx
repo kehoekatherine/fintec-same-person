@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 
 import { BiasRiskPanel } from "@/components/bias-risk-panel";
 import { ClosenessScore } from "@/components/case-assessment";
@@ -16,7 +16,6 @@ import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
 import { cn } from "cn";
 
 export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => void }) {
-  const backRef = useRef<HTMLButtonElement>(null);
   const facts = useCaseFacts(item);
   const bias = biasRiskForExplanation(item);
   const rows = facts.data
@@ -33,31 +32,30 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
   const message = facts.data ? caseMessage(facts.data) : facts.error;
 
   useEffect(() => {
-    const narrow = window.matchMedia("(max-width: 1023px)");
-    if (narrow.matches) backRef.current?.focus({ preventScroll: true });
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Escape" || !narrow.matches) return;
+      if (event.key !== "Escape") return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       onBack();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [item.hitId, onBack]);
+  }, [onBack]);
 
   return (
-    <article data-testid="case-panel" className="min-h-full text-foreground">
-      <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3 lg:hidden">
-        <Button ref={backRef} type="button" variant="outline" data-testid="case-back" className="h-10 px-3" onClick={onBack}>
-          <ArrowLeft />
-          Back
-        </Button>
-      </div>
-      <div className="grid gap-5 px-4 py-4 lg:px-5 lg:py-5">
+    <article data-testid="case-panel" className="border-t border-border px-4 py-4 text-foreground lg:px-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-xs break-all text-muted-foreground">
           {item.hitId}
           {item.alertId ? ` · ${item.alertId}` : ""}
         </p>
+        <Button type="button" variant="outline" data-testid="case-back" className="h-10 px-3" onClick={onBack}>
+          <X />
+          Close
+        </Button>
+      </div>
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <div className="grid gap-5">
         {facts.data || facts.error ? null : (
           <p data-testid="case-facts-loading" className="text-sm text-muted-foreground">
             Reading the customer file…
@@ -70,6 +68,8 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
         ) : null}
         {rows.length > 0 ? <CustomerHitCompare rows={rows} /> : null}
         <OtherMatching lines={facts.data?.packPresent && facts.data.hitPresent ? facts.data.others : []} />
+        </div>
+        <div className="grid gap-5">
         <section
           aria-label="Conclusion"
           data-testid="conclusion"
@@ -95,6 +95,7 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
         </section>
         {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
         {bias ? <BiasRiskPanel score={bias} /> : null}
+        </div>
       </div>
     </article>
   );

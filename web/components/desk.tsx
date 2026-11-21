@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -188,21 +188,16 @@ export function Desk() {
   );
 
   const notice = queue === "dev" && devStatus === "ready" ? dev?.notice : queue === "upload" ? upload?.notice : null;
+  const caseDetail = explanation ? (
+    <CasePanel item={explanation} onBack={closeCase} />
+  ) : hitParam ? (
+    <p className="px-5 py-6 text-sm text-muted-foreground" data-testid="case-loading">
+      Reading this record…
+    </p>
+  ) : null;
 
   return (
-    <DeskFrame
-      notice={notice}
-      panelOpen={Boolean(hitParam)}
-      panel={
-        explanation ? (
-          <CasePanel item={explanation} onBack={closeCase} />
-        ) : hitParam ? (
-          <p className="px-5 py-6 text-sm text-muted-foreground" data-testid="case-loading">
-            Reading this record…
-          </p>
-        ) : null
-      }
-    >
+    <DeskFrame notice={notice}>
       <div className="mb-8 grid gap-6">
         <QueueSwitch queue={queue} showUpload={Boolean(upload)} onQueue={openQueue} />
         <UploadControl busy={uploadBusy} error={uploadError} onFile={(file) => void sendFile(file)} />
@@ -216,9 +211,10 @@ export function Desk() {
           query={devQuery}
           filter={devFilter}
           activeHitId={queue === "dev" ? hitParam : null}
+          detail={queue === "dev" ? caseDetail : null}
           onQuery={setDevQuery}
           onFilter={setDevFilter}
-          onOpen={(row) => applyParams({ hit: row.hitId })}
+          onOpen={(row) => applyParams({ hit: hitParam === row.hitId ? null : row.hitId })}
           onReset={() => {
             setDevQuery("");
             setDevFilter("all");
@@ -233,9 +229,10 @@ export function Desk() {
           query={uploadQuery}
           filter={uploadFilter}
           activeHitId={queue === "upload" ? hitParam : null}
+          detail={queue === "upload" ? caseDetail : null}
           onQuery={setUploadQuery}
           onFilter={setUploadFilter}
-          onOpen={(row) => applyParams({ hit: row.hitId })}
+          onOpen={(row) => applyParams({ hit: hitParam === row.hitId ? null : row.hitId })}
           onReset={() => {
             setUploadQuery("");
             setUploadFilter("all");
@@ -254,6 +251,7 @@ function DevQueue({
   query,
   filter,
   activeHitId,
+  detail,
   onQuery,
   onFilter,
   onOpen,
@@ -266,6 +264,7 @@ function DevQueue({
   query: string;
   filter: FilterId;
   activeHitId: string | null;
+  detail: ReactNode;
   onQuery: (query: string) => void;
   onFilter: (filter: FilterId) => void;
   onOpen: (row: ResultPayload["rows"][number]) => void;
@@ -299,6 +298,7 @@ function DevQueue({
       query={query}
       filter={filter}
       activeHitId={activeHitId}
+      detail={detail}
       onQuery={onQuery}
       onFilter={onFilter}
       onOpen={onOpen}

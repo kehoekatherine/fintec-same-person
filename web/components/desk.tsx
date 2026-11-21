@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -197,7 +197,7 @@ export function Desk() {
   ) : null;
 
   return (
-    <DeskFrame notice={notice}>
+    <DeskFrame notice={notice} panelOpen={Boolean(hitParam)} panel={caseDetail}>
       <div className="mb-8 grid gap-6">
         <QueueSwitch queue={queue} showUpload={Boolean(upload)} onQueue={openQueue} />
         <UploadControl busy={uploadBusy} error={uploadError} onFile={(file) => void sendFile(file)} />
@@ -211,7 +211,6 @@ export function Desk() {
           query={devQuery}
           filter={devFilter}
           activeHitId={queue === "dev" ? hitParam : null}
-          detail={queue === "dev" ? caseDetail : null}
           onQuery={setDevQuery}
           onFilter={setDevFilter}
           onOpen={(row) => applyParams({ hit: hitParam === row.hitId ? null : row.hitId })}
@@ -229,7 +228,6 @@ export function Desk() {
           query={uploadQuery}
           filter={uploadFilter}
           activeHitId={queue === "upload" ? hitParam : null}
-          detail={queue === "upload" ? caseDetail : null}
           onQuery={setUploadQuery}
           onFilter={setUploadFilter}
           onOpen={(row) => applyParams({ hit: hitParam === row.hitId ? null : row.hitId })}
@@ -251,7 +249,6 @@ function DevQueue({
   query,
   filter,
   activeHitId,
-  detail,
   onQuery,
   onFilter,
   onOpen,
@@ -264,7 +261,6 @@ function DevQueue({
   query: string;
   filter: FilterId;
   activeHitId: string | null;
-  detail: ReactNode;
   onQuery: (query: string) => void;
   onFilter: (filter: FilterId) => void;
   onOpen: (row: ResultPayload["rows"][number]) => void;
@@ -298,7 +294,6 @@ function DevQueue({
       query={query}
       filter={filter}
       activeHitId={activeHitId}
-      detail={detail}
       onQuery={onQuery}
       onFilter={onFilter}
       onOpen={onOpen}

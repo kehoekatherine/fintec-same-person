@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 
 import { BiasRiskPanel } from "@/components/bias-risk-panel";
 import { ClosenessScore } from "@/components/case-assessment";
@@ -16,6 +16,7 @@ import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
 import { cn } from "cn";
 
 export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => void }) {
+  const backRef = useRef<HTMLButtonElement>(null);
   const facts = useCaseFacts(item);
   const bias = biasRiskForExplanation(item);
   const rows = facts.data
@@ -32,30 +33,33 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
   const message = facts.data ? caseMessage(facts.data) : facts.error;
 
   useEffect(() => {
+    const column = backRef.current?.closest("[data-testid='case-column']");
+    if (column instanceof HTMLElement) column.scrollTop = 0;
+    const narrow = window.matchMedia("(max-width: 1023px)");
+    if (narrow.matches) backRef.current?.focus({ preventScroll: true });
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || !narrow.matches) return;
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       onBack();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
+  }, [item.hitId, onBack]);
 
   return (
-    <article data-testid="case-panel" className="border-t border-border px-4 py-4 text-foreground lg:px-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <article data-testid="case-panel" className="min-h-full text-foreground">
+      <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3 lg:hidden">
+        <Button ref={backRef} type="button" variant="outline" data-testid="case-back" className="h-10 px-3" onClick={onBack}>
+          <ArrowLeft />
+          Back
+        </Button>
+      </div>
+      <div className="grid gap-5 px-4 py-4 lg:px-5 lg:py-5">
         <p className="font-mono text-xs break-all text-muted-foreground">
           {item.hitId}
           {item.alertId ? ` · ${item.alertId}` : ""}
         </p>
-        <Button type="button" variant="outline" data-testid="case-back" className="h-10 px-3" onClick={onBack}>
-          <X />
-          Close
-        </Button>
-      </div>
-      <div className="grid items-start gap-5 lg:grid-cols-2">
-        <div className="grid gap-5">
         {facts.data || facts.error ? null : (
           <p data-testid="case-facts-loading" className="text-sm text-muted-foreground">
             Reading the customer file…
@@ -68,8 +72,6 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
         ) : null}
         {rows.length > 0 ? <CustomerHitCompare rows={rows} /> : null}
         <OtherMatching lines={facts.data?.packPresent && facts.data.hitPresent ? facts.data.others : []} />
-        </div>
-        <div className="grid gap-5">
         <section
           aria-label="Conclusion"
           data-testid="conclusion"
@@ -84,21 +86,76 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
               </Badge>
             ) : null}
           </div>
-          {item.reasonCode ? <p className="mt-2 text-sm text-foreground">{reasonLabel(item.reasonCode)}</p> : null}
-          <p className="mt-1 text-sm text-muted-foreground">{DECISION_MEANING[item.decision]}</p>
+          <p className="mt-2 text-sm leading-6 text-foreground" data-testid="case-conclusion">
+            {conclusionLine(item.reasonCode, item.decision)}
+          </p>
         </section>
         <section aria-label="Action" data-testid="action">
-          <h3 className="font-heading text-2xl text-foreground">Action</h3>
+          <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Action</h3>
           <p className="mt-1 text-base leading-7 text-foreground" data-testid="case-action">
             {actionFor(item.decision, item.customerRecordId)}
           </p>
         </section>
+        <Sources ids={item.evidenceIds} customerId={item.customerRecordId} />
         {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
         {bias ? <BiasRiskPanel score={bias} /> : null}
-        </div>
       </div>
     </article>
   );
+}
+
+function Sources({ ids, customerId }: { ids: string[]; customerId: string | null }) {
+  const lines = sourceLines(ids, customerId);
+  return (
+    <section aria-label="Sources" data-testid="sources" className="grid gap-1">
+      <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Sources</h3>
+      {lines.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No evidence ids were recorded.</p>
+      ) : (
+        <ul className="grid gap-1">
+          {lines.map((line) => (
+            <li key={line.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm text-foreground">
+              <span className="font-mono text-xs">{line.id}</span>
+              <span>{line.type}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function sourceLines(ids: string[], customerId: string | null): { id: string; type: string }[] {
+  const seen = new Set<string>();
+  const lines: { id: string; type: string }[] = [];
+  for (const id of ids) {
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    lines.push({ id: trimmed, type: sourceType(trimmed) });
+  }
+  if (customerId && customerId !== "AMBIGUOUS" && !seen.has(customerId)) {
+    lines.push({ id: customerId, type: sourceType(customerId) });
+  }
+  return lines;
+}
+
+function sourceType(id: string): string {
+  if (id.startsWith("CUS-")) return "customer record";
+  if (id.startsWith("NOTE-")) return "note";
+  if (id.startsWith("KYC-")) return "identity check";
+  if (id.startsWith("SR-")) return "search result";
+  if (id.startsWith("H-")) return "watchlist hit";
+  if (id.startsWith("A-")) return "alert";
+  return "record";
+}
+
+function conclusionLine(reasonCode: string, decision: Explanation["decision"]): string {
+  const meaning = DECISION_MEANING[decision];
+  if (!reasonCode) return meaning;
+  const reason = reasonLabel(reasonCode);
+  if (meaning.toLowerCase().startsWith(reason.toLowerCase())) return meaning;
+  return `${reason}. ${meaning}`;
 }
 
 function caseMessage(facts: CaseFacts): string | null {

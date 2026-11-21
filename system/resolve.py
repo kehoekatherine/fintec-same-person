@@ -2,16 +2,21 @@
 """Decide whether each watchlist hit is the screened customer.
 
 The rules are the bank's identity SOP (POLICY.md in the data folder). The same
-facts always produce the same decision: there is no model call and no randomness.
+facts always produce the same decision. With no OpenRouter key there is no
+network call and no randomness. A key can only turn a clearance into a review.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import sys
 import time
 import unicodedata
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -454,6 +459,34 @@ def listing_phrase(hit: dict) -> str:
     return LISTING_PHRASE.get(fold_text(str(category)), "named on a watchlist")
 
 
+def _sentence_names(sentence: str, name_sets: list[set[str]]) -> bool:
+    """True when the sentence contains every part of one of the hit's names."""
+    if not name_sets:
+        return False
+    words = set(fold_text(sentence).split())
+    return any(tokens and tokens <= words for tokens in name_sets)
+
+
+def snippet_countries(blob: str, name_tokens: set[str]) -> set[str]:
+    """Countries a snippet ties to the listing, ignoring the person's own name.
+
+    A given name that is also a country does not count. "in Jordan" still
+    counts, because that is the place, not the name.
+    """
+    found = countries_in_text(blob)
+    if not name_tokens:
+        return set(found)
+    padded = f" {fold_text(blob)} "
+    kept: set[str] = set()
+    for country in found:
+        if not (set(country.split()) & name_tokens):
+            kept.add(country)
+            continue
+        if any(f" {prep} {country} " in padded for prep in ("in", "from", "within", "inside")):
+            kept.add(country)
+    return kept
+
+
 def split_sentences(text: str) -> list[str]:
     chunks = re.split(r"(?<=[.!?])\s+", text.strip())
     return [chunk.strip() for chunk in chunks if chunk.strip()]
@@ -733,7 +766,9 @@ def identity_from_note(note: dict, names: Names, company: bool) -> CheckFact | N
         return None
     if not re.search(r"passport|driving licence|driving license|national id|identity|licence|license|document|registry", lowered):
         return None
-    if not re.search(r"verif|validat|passed|match|cleared|successful|confirmed|processed|complete", lowered):
+    # Success words of one kind: verified, passed, confirmed, and the same
+    # idea in approved, authenticated, and vetted. "confirm" covers confirms.
+    if not re.search(r"verif|validat|passed|match|cleared|successful|confirm|processed|complete|approv|authenticat|\bvett", lowered):
         return None
     dob = _note_dob(text, note.get("created_at") or "")
     raw_name = _note_name(text)
@@ -806,7 +841,7 @@ def _note_country(text: str) -> str | None:
 def lived_countries(text: str) -> list[str]:
     found = []
     residence = re.compile(
-        r"\b(lived|lives|living|resided|resides|residence|residency|resident|domicil\w*|homes?|based in|settled|relocated|moved to|inhabitant|dwelling|stayed in)\b",
+        r"\b(lived|lives|living|resided|resides|residing|residence|residency|residential|resident|domicil\w*|homes?|household|based in|settled|relocated|moved to|inhabitant|dwelling|stayed in)\b",
         re.I,
     )
     for sentence in split_sentences(text):
@@ -1139,14 +1174,22 @@ class World:
             return [], []
         phrase = listing_phrase(hit)
         queries = []
+        name_sets: list[set[str]] = []
+        name_tokens: set[str] = set()
         for raw in [hit.get("name") or "", *(hit.get("aliases") or [])]:
             folded = fold_text(re.sub(r"\([^)]*\)", " ", raw))
-            if folded:
-                queries.append(folded)
-                queries.append(" ".join(sorted(folded.split())))
+            if not folded:
+                continue
+            queries.append(folded)
+            queries.append(" ".join(sorted(folded.split())))
+            tokens = {token for token in folded.split() if len(token) >= 2}
+            if tokens:
+                name_sets.append(tokens)
+                name_tokens.update(tokens)
         seen_results = set()
         collected: list[Partial] = []
         used: list[str] = []
+        hit_countries = set(countries)
         for query in queries:
             for result in self.search_by_query.get(query, ()):
                 if result["result_id"] in seen_results:
@@ -1155,16 +1198,24 @@ class World:
                 blob = f"{result.get('title') or ''} {result.get('snippet') or ''}"
                 if phrase not in blob.lower():
                     continue
-                if not (set(countries_in_text(blob)) & set(countries)):
+                # The query is already the hit's name. The snippet still has to
+                # carry this category's listing phrase and a country tied to the
+                # hit. A given name that is also a country does not qualify.
+                if not (snippet_countries(blob, name_tokens) & hit_countries):
                     continue
                 births: list[Partial] = []
                 for sentence in split_sentences(blob):
-                    if phrase in sentence.lower():
+                    if phrase in sentence.lower() and _sentence_names(sentence, name_sets):
                         births = births_from_sentence(sentence)
                         if births:
                             break
                 if not births:
+                    # The age may sit in the previous sentence ("She is 40. She
+                    # is a sanctioned individual in France."). A different
+                    # person's age in that sentence does not count.
                     for sentence in split_sentences(blob):
+                        if not _sentence_names(sentence, name_sets):
+                            continue
                         births = births_from_sentence(sentence)
                         if births:
                             break
@@ -1177,6 +1228,11 @@ class World:
             if item.iso() not in seen_iso:
                 seen_iso.add(item.iso())
                 unique.append(item)
+        # One age at a date is two adjacent birth years. A wider spread is two
+        # people who share the name, so neither year is safe to use.
+        years = [item.year for item in unique if item.year is not None]
+        if len(years) >= 2 and max(years) - min(years) > 1:
+            return [], []
         return unique, used
 
 
@@ -1649,7 +1705,117 @@ def decide_hit(world: World, alert: dict, hit: dict) -> Outcome:
     else:
         record_id = person.seed
     reason = " ".join(sentences)
-    return Outcome(DECISION_OF[code], code, record_id, reason, evidence, comparison, closeness)
+    outcome = Outcome(DECISION_OF[code], code, record_id, reason, evidence, comparison, closeness)
+    return guard_clearance(outcome, _compared_facts(people, facts))
+
+
+_GUARD_CACHE: dict[str, str] = {}
+_HOLD_SENTENCE = "A reviewer should confirm the clearance."
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _compared_facts(people: list[Person], facts: HitFacts) -> tuple[str, str, str]:
+    """Names, dates, and countries the rules already compared. Nothing else."""
+    customer_names = []
+    customer_dates = []
+    customer_countries = []
+    for person in people:
+        if person.verified_raw:
+            customer_names.append(person.verified_raw)
+        elif person.declared_names:
+            customer_names.append(" / ".join(" ".join(parts) for parts in person.declared_names))
+        else:
+            customer_names.append("none")
+        customer_dates.append(", ".join(item.iso() for item in person.dobs) or "none")
+        customer_countries.append(join_countries(person.countries) or "none")
+    names = "customer " + " | ".join(customer_names) + "; hit " + (facts.raw_name or "none")
+    hit_dates = _format_hit_dobs(facts) if facts.dobs else "none"
+    dates = "customer " + " | ".join(customer_dates) + "; hit " + hit_dates
+    countries = "customer " + " | ".join(customer_countries) + "; hit " + (join_countries(facts.countries) or "none")
+    return names, dates, countries
+
+
+def _guard_prompt(outcome: Outcome, names: str, dates: str, countries: str) -> str:
+    return "\n".join((
+        "Reply with one token: ALLOW or HOLD.",
+        f"Reason code: {outcome.reason_code}",
+        f"Reason: {outcome.reason}",
+        f"Names: {names}",
+        f"Dates: {dates}",
+        f"Countries: {countries}",
+    ))
+
+
+def _ask_openrouter(api_key: str, prompt: str) -> str:
+    """ALLOW keeps the clearance. Anything else, including a failed call, holds it."""
+    model = os.environ.get("OPENROUTER_MODEL") or "openai/gpt-4o-mini"
+    body = {
+        "model": model,
+        "temperature": 0,
+        "seed": 0,
+        "max_tokens": 8,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    request = urllib.request.Request(
+        _OPENROUTER_URL,
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            if response.status != 200:
+                return "HOLD"
+            payload = json.loads(response.read().decode("utf-8"))
+        content = payload["choices"][0]["message"]["content"]
+    except Exception:
+        # A timeout, a bad status, or a body we cannot read holds this hit.
+        # The run continues. The key is never printed.
+        return "HOLD"
+    if not isinstance(content, str):
+        return "HOLD"
+    if content.strip().upper() == "ALLOW":
+        return "ALLOW"
+    return "HOLD"
+
+
+def guard_clearance(outcome: Outcome, compared: tuple[str, str, str]) -> Outcome:
+    """Ask OpenRouter only about a clearance. No key means the rules stand.
+
+    The model cannot create a clearance. HOLD, a timeout, a bad status, or any
+    other body turns this hit into a review and leaves the customer id and the
+    evidence as they are.
+    """
+    if outcome.decision != "DIFFERENT_ENTITY":
+        return outcome
+    api_key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
+    if not api_key:
+        return outcome
+    prompt = _guard_prompt(outcome, *compared)
+    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    verdict = _GUARD_CACHE.get(digest)
+    if verdict is None:
+        verdict = _ask_openrouter(api_key, prompt)
+        _GUARD_CACHE[digest] = verdict
+    if verdict == "ALLOW":
+        return outcome
+    reason = outcome.reason.rstrip()
+    if reason and reason[-1] not in ".!?":
+        reason += "."
+    if _HOLD_SENTENCE not in reason:
+        reason = f"{reason} {_HOLD_SENTENCE}".strip()
+    return Outcome(
+        "REVIEW",
+        "INSUFFICIENT_DATA",
+        outcome.customer_record_id,
+        reason,
+        list(outcome.evidence),
+        outcome.comparison,
+        _scored("REVIEW", outcome.comparison),
+    )
 
 
 def resolve(data: Path) -> list[dict]:

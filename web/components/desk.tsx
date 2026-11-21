@@ -5,13 +5,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { CaseWindow } from "@/components/case-window";
+import { CasePanel } from "@/components/case-window";
 import { DeskFrame, LoadingState } from "@/components/desk-frame";
 import { QueuePanel } from "@/components/queue-panel";
 import { QueueSwitch } from "@/components/queue-switch";
 import { ResultsTable } from "@/components/results-table";
 import { UploadControl } from "@/components/upload-control";
-import { explainCase, explainRow, type Explanation } from "@/lib/explanation";
+import { explainCase, explainRow } from "@/lib/explanation";
 import { FILTERS } from "@/lib/labels";
 import type { DeskFailure, DeskPayload, FilterId, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
@@ -50,7 +50,31 @@ export function Desk() {
   const [uploadError, setUploadError] = useState<DeskFailure | null>(null);
   const [uploadQuery, setUploadQuery] = useState("");
   const [uploadFilter, setUploadFilter] = useState<FilterId>("all");
-  const [explanation, setExplanation] = useState<Explanation | null>(null);
+  const hitParam = searchParams.get("hit");
+  const explanation = useMemo(() => {
+    if (!hitParam) return null;
+    if (queue === "brief") {
+      const item = brief?.cases.find((entry) => entry.hitId === hitParam);
+      return item ? explainCase(item) : null;
+    }
+    if (queue === "upload") {
+      const row = upload?.rows.find((entry) => entry.hitId === hitParam);
+      if (!row || !upload) return null;
+      return explainRow(
+        row,
+        upload.mode === "recorded"
+          ? "These evidence ids were recorded in the uploaded file."
+          : "These evidence ids are the records in the uploaded file that decided the hit.",
+      );
+    }
+    const row = dev?.rows.find((entry) => entry.hitId === hitParam);
+    return row
+      ? explainRow(
+          row,
+          "The development run does not include the customer files. These are the evidence ids the resolver wrote.",
+        )
+      : null;
+  }, [brief, dev, hitParam, queue, upload]);
 
   const applyParams = useCallback(
     (next: Record<string, string | null>) => {
@@ -64,6 +88,25 @@ export function Desk() {
     },
     [pathname, router, searchParams],
   );
+
+  const closeCase = useCallback(() => {
+    applyParams({ hit: null });
+  }, [applyParams]);
+
+  useEffect(() => {
+    if (!hitParam) return;
+    if (queue === "brief" && briefStatus === "ready" && !brief?.cases.some((item) => item.hitId === hitParam)) {
+      applyParams({ hit: null });
+      return;
+    }
+    if (queue === "dev" && devStatus === "ready" && !dev?.rows.some((row) => row.hitId === hitParam)) {
+      applyParams({ hit: null });
+      return;
+    }
+    if (queue === "upload" && upload && !upload.rows.some((row) => row.hitId === hitParam)) {
+      applyParams({ hit: null });
+    }
+  }, [applyParams, brief, briefStatus, dev, devStatus, hitParam, queue, upload]);
 
   const loadBrief = useCallback(async () => {
     setBriefStatus("loading");
@@ -177,7 +220,6 @@ export function Desk() {
     (next: QueueId) => {
       if (next === "upload" && !upload) return;
       setQueue(next);
-      setExplanation(null);
       applyParams({
         queue: next === "dev" ? null : next,
         hit: null,
@@ -202,11 +244,6 @@ export function Desk() {
       setBrief(body);
       setBriefStatus("ready");
       setBriefError(null);
-      setExplanation((current) => {
-        if (!current || current.source !== "brief") return current;
-        const next = body.cases.find((item) => item.hitId === current.hitId);
-        return next ? explainCase(next) : null;
-      });
     } catch {
       setRerunError({ error: "The desk could not reach the resolver." });
     } finally {
@@ -238,7 +275,6 @@ export function Desk() {
         setUpload(payload);
         setUploadQuery("");
         setUploadFilter("all");
-        setExplanation(null);
         setQueue("upload");
         applyParams({ queue: "upload", hit: null });
       } catch {
@@ -296,6 +332,16 @@ export function Desk() {
       onRerun={queue === "brief" ? () => void rerun() : undefined}
       busy={briefBusy}
       notice={notice}
+      panelOpen={Boolean(hitParam)}
+      panel={
+        explanation ? (
+          <CasePanel item={explanation} onBack={closeCase} />
+        ) : hitParam ? (
+          <p className="px-5 py-6 text-sm text-muted-foreground" data-testid="case-loading">
+            Reading this record…
+          </p>
+        ) : null
+      }
     >
       <div className="mb-8 grid gap-6">
         <QueueSwitch queue={queue} showUpload={Boolean(upload)} onQueue={openQueue} />
@@ -309,17 +355,10 @@ export function Desk() {
           payload={dev}
           query={devQuery}
           filter={devFilter}
-          activeHitId={explanation?.source === "row" ? explanation.hitId : null}
+          activeHitId={queue === "dev" ? hitParam : null}
           onQuery={setDevQuery}
           onFilter={setDevFilter}
-          onOpen={(row) =>
-            setExplanation(
-              explainRow(
-                row,
-                "The development run does not include the customer files. These are the evidence ids the resolver wrote.",
-              ),
-            )
-          }
+          onOpen={(row) => applyParams({ hit: row.hitId })}
           onReset={() => {
             setDevQuery("");
             setDevFilter("all");
@@ -337,13 +376,10 @@ export function Desk() {
           visible={visible}
           filter={filter}
           query={query}
-          activeHitId={explanation?.source === "brief" ? explanation.hitId : null}
+          activeHitId={queue === "brief" ? hitParam : null}
           onFilter={(next) => applyParams({ filter: next === "all" ? null : next })}
           onQuery={setQuery}
-          onOpen={(id) => {
-            const item = brief?.cases.find((entry) => entry.hitId === id);
-            if (item) setExplanation(explainCase(item));
-          }}
+          onOpen={(id) => applyParams({ hit: id })}
           onReset={() => {
             setQuery("");
             applyParams({ filter: null });
@@ -357,19 +393,10 @@ export function Desk() {
           rows={upload.rows}
           query={uploadQuery}
           filter={uploadFilter}
-          activeHitId={explanation?.source === "row" ? explanation.hitId : null}
+          activeHitId={queue === "upload" ? hitParam : null}
           onQuery={setUploadQuery}
           onFilter={setUploadFilter}
-          onOpen={(row) =>
-            setExplanation(
-              explainRow(
-                row,
-                upload.mode === "recorded"
-                  ? "These evidence ids were recorded in the uploaded file."
-                  : "These evidence ids are the records in the uploaded file that decided the hit.",
-              ),
-            )
-          }
+          onOpen={(row) => applyParams({ hit: row.hitId })}
           onReset={() => {
             setUploadQuery("");
             setUploadFilter("all");
@@ -377,7 +404,6 @@ export function Desk() {
           caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
         />
       ) : null}
-      <CaseWindow item={explanation} onClose={() => setExplanation(null)} />
     </DeskFrame>
   );
 }
@@ -500,7 +526,6 @@ function BriefQueue({
         </div>
       ) : null}
       {status === "ready" && payload && payload.cases.length > 0 ? (
-        <div className="max-w-3xl">
         <QueuePanel
           cases={visible.filtered}
           counts={visible.counts}
@@ -513,7 +538,6 @@ function BriefQueue({
           onOpen={onOpen}
           onReset={onReset}
         />
-        </div>
       ) : null}
     </div>
   );

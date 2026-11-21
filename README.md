@@ -2,7 +2,7 @@
 
 A bank screening system has already matched customers to watchlist profiles. Most of those matches share a name and little else. This program is deterministic watchlist entity resolution: for each match it decides whether the customer and the listed person are the same entity, a different entity, or a case a person should review.
 
-It follows the screening policy exactly: clear a hit only when a fact contradicts it, confirm a hit only when the name and the other required facts agree and nothing contradicts them, and leave everything else for a person to review. The costly mistake is clearing a hit that is the customer or that a reviewer should see. It does not call a language model, so a run has no model fee and the same inputs always produce the same file.
+It follows the screening policy exactly: clear a hit only when a fact contradicts it, confirm a hit only when the name and the other required facts agree and nothing contradicts them, and leave everything else for a person to review. The costly mistake is clearing a hit that is the customer or that a reviewer should see. Without an API key it does not call a language model, so that run has no model fee and the same inputs always produce the same file.
 
 ## What it does
 
@@ -23,7 +23,7 @@ The dev server listens on port 4317. See [Try it](#try-it) for the desk and the 
 
 ## AI tools
 
-The program that runs does not use an AI model. There is no OpenRouter call and no API key.
+No `OPENROUTER_API_KEY` means the rules alone decide, and the program makes no network call. With a key, OpenRouter is asked only after the rules have cleared a hit. The model can block that clearance and send the hit to review. It cannot create a clearance, and it cannot change a confirmation or a review.
 
 The program was written in Cursor with an AI coding agent (Grok). The agent turned the written policy into Python. The decisions in `output/dev.jsonl` come from that Python, not from a model at runtime.
 
@@ -89,7 +89,7 @@ Python 3.10 or newer. The standard library only. No API key.
 system/run <data folder> <output file>
 ```
 
-`<data folder>` is the folder that contains `hits.jsonl`, `alerts.jsonl`, `customers.jsonl`, and the other files described in the track README. The program writes one JSON object per hit to `<output file>`. On the development set of 819 hits it finishes in about ten seconds and makes no network calls.
+`<data folder>` is the folder that contains `hits.jsonl`, `alerts.jsonl`, `customers.jsonl`, and the other files described in the track README. The program writes one JSON object per hit to `<output file>`. On the development set of 819 hits it finishes in about ten seconds. With no API key it makes no network calls.
 
 Score the development predictions with the checker shipped in the data pack:
 

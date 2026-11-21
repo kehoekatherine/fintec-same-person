@@ -1,6 +1,7 @@
 "use client";
 
-import { Dialog } from "@base-ui/react/dialog";
+import { useEffect, useRef } from "react";
+import { ArrowLeft } from "lucide-react";
 
 import { BiasRiskPanel } from "@/components/bias-risk-panel";
 import { ClosenessScore } from "@/components/case-assessment";
@@ -11,58 +12,58 @@ import { biasRiskForExplanation } from "@/lib/bias-risk";
 import { comparisonFromExplanation } from "@/lib/comparison";
 import type { Explanation } from "@/lib/explanation";
 
-export function CaseWindow({
-  item,
-  onClose,
-}: {
-  item: Explanation | null;
-  onClose: () => void;
-}) {
+export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => void }) {
+  const backRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 1023px)");
+    if (narrow.matches) backRef.current?.focus({ preventScroll: true });
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" || !narrow.matches) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      onBack();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [item.hitId, onBack]);
+
   return (
-    <Dialog.Root
-      open={item != null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40" />
-        <Dialog.Popup
-          data-testid="case-window"
-          className="fixed top-1/2 left-1/2 z-50 max-h-[min(44rem,calc(100dvh-2rem))] w-[min(52rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto border border-border bg-popover p-5 text-popover-foreground shadow-lg outline-none"
+    <article data-testid="case-panel" className="min-h-full text-foreground">
+      <div className="sticky top-0 z-10 border-b border-border bg-background px-4 py-3 lg:hidden">
+        <Button
+          ref={backRef}
+          type="button"
+          variant="outline"
+          data-testid="case-back"
+          className="h-10 px-3"
+          onClick={onBack}
         >
-          {item ? <ExplanationBody item={item} /> : null}
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <ArrowLeft />
+          Back
+        </Button>
+      </div>
+      <div className="px-4 py-4 lg:px-5 lg:py-5">
+        <ExplanationBody item={item} />
+      </div>
+    </article>
   );
 }
 
 function ExplanationBody({ item }: { item: Explanation }) {
   const bias = biasRiskForExplanation(item);
   return (
-    <article className="grid gap-6">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Dialog.Title className="font-mono text-xs text-muted-foreground">
-            {item.hitId}
-            {item.alertId ? ` · ${item.alertId}` : ""}
-          </Dialog.Title>
-          <Dialog.Description className="sr-only">Customer and hit comparison</Dialog.Description>
-        </div>
-        <Dialog.Close
-          data-testid="case-window-close"
-          render={<Button type="button" variant="outline" className="h-10 shrink-0 px-3" />}
-        >
-          Close
-        </Dialog.Close>
-      </div>
+    <div className="grid gap-6">
+      <p className="font-mono text-xs break-all text-muted-foreground">
+        {item.hitId}
+        {item.alertId ? ` · ${item.alertId}` : ""}
+      </p>
       <CaseComparison model={comparisonFromExplanation(item)} />
       {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
       {bias ? <BiasRiskPanel score={bias} /> : null}
       {item.source === "row" ? (
         <DevRecord hitId={item.hitId} alertId={item.alertId} customerRecordId={item.customerRecordId} />
       ) : null}
-    </article>
+    </div>
   );
 }

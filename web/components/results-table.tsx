@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ClosenessLine } from "@/components/case-assessment";
 import { DECISION_BADGE } from "@/components/decision-style";
@@ -42,12 +42,29 @@ export function ResultsTable({
     [filtered],
   );
   const scope = `${filter}\u0000${query}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
+  const selectedIndex = activeHitId ? keyed.findIndex((item) => item.row.hitId === activeHitId) : -1;
   const [page, setPage] = useState(1);
   const [pageScope, setPageScope] = useState(scope);
+  const [followedHit, setFollowedHit] = useState<string | null>(activeHitId);
   if (pageScope !== scope) {
     setPageScope(scope);
-    setPage(1);
+    setPage(selectedIndex >= 0 ? Math.floor(selectedIndex / PAGE_SIZE) + 1 : 1);
   }
+  if (activeHitId !== followedHit) {
+    setFollowedHit(activeHitId);
+    if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / PAGE_SIZE) + 1);
+  }
+
+  useEffect(() => {
+    if (!activeHitId) return;
+    const row = document.querySelector(`[data-testid="result-${CSS.escape(activeHitId)}"]`);
+    const scroller = row?.closest("[data-testid='queue-scroller']");
+    if (!(row instanceof HTMLElement) || !(scroller instanceof HTMLElement)) return;
+    const rowRect = row.getBoundingClientRect();
+    const box = scroller.getBoundingClientRect();
+    if (rowRect.top < box.top) scroller.scrollTop -= box.top - rowRect.top;
+    else if (rowRect.bottom > box.bottom) scroller.scrollTop += rowRect.bottom - box.bottom;
+  }, [activeHitId, page]);
 
   const pageCount = Math.max(1, Math.ceil(keyed.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -56,7 +73,7 @@ export function ResultsTable({
   const showName = rows.some((row) => row.name || row.listedName);
 
   return (
-    <section className="grid gap-4" aria-label={caption} data-testid="results-table">
+    <section className="flex flex-col gap-3 lg:h-full lg:min-h-0" aria-label={caption} data-testid="results-table">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by decision">
         {FILTERS.map((item) => {
           const pressed = filter === item.id;
@@ -102,7 +119,7 @@ export function ResultsTable({
       {keyed.length === 0 ? (
         <EmptyResults query={query} onReset={onReset} />
       ) : (
-        <div className="border border-border bg-card">
+        <div data-testid="result-scroller" className="overflow-x-auto border border-border bg-card">
           <Table className="min-w-[56rem]">
             <TableCaption>{caption}</TableCaption>
             <TableHeader>
@@ -126,9 +143,11 @@ export function ResultsTable({
                     data-testid={`result-${item.row.hitId}`}
                     data-selected={active ? "true" : "false"}
                     aria-selected={active}
-                    aria-haspopup="dialog"
                     tabIndex={0}
-                    className={cn("cursor-pointer hover:bg-muted/80", active && "bg-muted")}
+                    className={cn(
+                      "cursor-pointer hover:bg-muted/80",
+                      active && "bg-secondary shadow-[inset_3px_0_0_0_var(--primary)] hover:bg-secondary",
+                    )}
                     onClick={() => onOpen(item.row)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {

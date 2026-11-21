@@ -2,6 +2,30 @@ export type Decision = "DIFFERENT_ENTITY" | "SAME_ENTITY" | "REVIEW";
 
 export type FilterId = "all" | "clear" | "confirm" | "review";
 
+export type FactStatus = "match" | "different" | "undefined";
+
+export type ComparedFact = {
+  customer: string;
+  hit: string;
+  status: FactStatus;
+};
+
+export type Comparison = {
+  name: ComparedFact;
+  dateOfBirth: ComparedFact;
+  country: ComparedFact;
+};
+
+export type ClosenessBand = "Close" | "Partial" | "Distant";
+
+export type Closeness = {
+  total: number;
+  band: ClosenessBand;
+  name: number;
+  dateOfBirth: number;
+  country: number;
+};
+
 export type Resolution = {
   hit_id: string;
   alert_id: string;
@@ -10,6 +34,8 @@ export type Resolution = {
   customer_record_id: string | null;
   reason: string;
   evidence: string[];
+  comparison: Comparison | null;
+  closeness: Closeness | null;
 };
 
 export type FieldRow = {
@@ -100,6 +126,8 @@ export type ResultRow = {
   customerInFile: boolean | null;
   reason: string;
   evidence: string[];
+  comparison: Comparison | null;
+  closeness: Closeness | null;
   name: string | null;
   listedName: string | null;
   customerDob: string | null;

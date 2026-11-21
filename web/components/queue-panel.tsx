@@ -1,3 +1,4 @@
+import { ClosenessLine } from "@/components/case-assessment";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,9 @@ export function QueuePanel({
                       <span className="font-mono text-xs leading-5 break-all text-muted-foreground">
                         {item.resolution.reason_code}
                       </span>
+                      {item.resolution.closeness ? (
+                        <ClosenessLine closeness={item.resolution.closeness} testId={`closeness-${item.hitId}`} />
+                      ) : null}
                       <span className="font-mono text-xs text-muted-foreground">
                         Fixture {item.resolution.customer_record_id ?? "no customer record"}
                       </span>

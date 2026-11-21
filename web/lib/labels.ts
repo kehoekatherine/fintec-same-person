@@ -12,6 +12,12 @@ export const DECISION_MEANING: Record<Decision, string> = {
   REVIEW: "Not enough to decide. A person should look.",
 };
 
+export const DECISION_ACTION: Record<Decision, string> = {
+  DIFFERENT_ENTITY: "The hit is cleared.",
+  SAME_ENTITY: "A person still has to accept this confirmation.",
+  REVIEW: "A person still has to review this hit.",
+};
+
 export const REASON_LABEL: Record<string, string> = {
   ENTITY_TYPE_MISMATCH: "A person and a company",
   DECEASED: "Died before the screen",

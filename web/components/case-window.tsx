@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
 
 import { BiasRiskPanel } from "@/components/bias-risk-panel";
+import { ClosenessScore, ComparisonTable } from "@/components/case-assessment";
 import { DevRecord } from "@/components/dev-record";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
@@ -148,6 +149,9 @@ function ExplanationBody({ item }: { item: Explanation }) {
       </section>
 
       {bias ? <BiasRiskPanel score={bias} /> : null}
+
+      {item.comparison ? <ComparisonTable comparison={item.comparison} /> : null}
+      {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
 
       <section aria-label="Reason codes" className="grid gap-2" data-testid="case-grounds">
         <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Reason codes</h3>

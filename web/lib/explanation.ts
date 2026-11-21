@@ -1,4 +1,4 @@
-import type { Decision, DeskCase, EvidenceRecord, ResultRow, ScreenedCustomer, WatchlistHit } from "./types";
+import type { Closeness, Comparison, Decision, DeskCase, EvidenceRecord, ResultRow, ScreenedCustomer, WatchlistHit } from "./types";
 
 /** The order grounds are listed. The stored reason_code is marked separately. */
 export const GROUND_PRIORITY = [
@@ -39,6 +39,8 @@ export type Explanation = {
   evidenceNote: string;
   customerDob: string | null;
   customerCountry: string | null;
+  comparison: Comparison | null;
+  closeness: Closeness | null;
 };
 
 export function groundsToShow(stored: string, checked: boolean, applicable: readonly string[]): string[] {
@@ -98,6 +100,8 @@ export function explainCase(item: DeskCase): Explanation {
     evidenceNote: "The resolver cites only the records that decided the hit.",
     customerDob: item.screened.dob,
     customerCountry: item.screened.country,
+    comparison: item.resolution.comparison,
+    closeness: item.resolution.closeness,
   };
 }
 
@@ -124,5 +128,7 @@ export function explainRow(row: ResultRow, evidenceNote: string): Explanation {
     evidenceNote,
     customerDob: row.customerDob,
     customerCountry: row.customerCountry,
+    comparison: row.comparison,
+    closeness: row.closeness,
   };
 }

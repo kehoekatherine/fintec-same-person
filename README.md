@@ -39,7 +39,7 @@ The program was written in Cursor with an AI coding agent (Grok). The agent turn
 
 **When.** Run it when a screening alert exists and the data folder for that alert is available. A development run of about 800 hits takes about ten seconds. The same command is what a later unseen set is scored with.
 
-**Output.** One JSON line per hit in the output file. Each line has the hit and alert ids, a decision (`DIFFERENT_ENTITY`, `SAME_ENTITY`, or `REVIEW`), a reason code, the customer record id (or `AMBIGUOUS`, or null), two to four sentences naming this hit's facts, and the evidence record ids.
+**Output.** One JSON line per hit in the output file. Each line has the hit and alert ids, a decision (`DIFFERENT_ENTITY`, `SAME_ENTITY`, or `REVIEW`), a reason code, the customer record id (or `AMBIGUOUS`, or null), two to four sentences naming this hit's facts, the evidence record ids, and a `comparison` of the name, date of birth, and country already compared. A review or a confirmation also has a `closeness` score out of 100. A cleared hit has no closeness score.
 
 ## Files
 

@@ -16,35 +16,29 @@ import { FILTERS } from "@/lib/labels";
 import type { DeskFailure, DeskPayload, FilterId, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
 
-function isFilter(value: string | null): value is FilterId {
-  return FILTERS.some((item) => item.id === value);
-}
-
 export function Desk() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const filter: FilterId = isFilter(searchParams.get("filter")) ? (searchParams.get("filter") as FilterId) : "all";
   const queueParam = searchParams.get("queue");
-  const [queue, setQueue] = useState<QueueId>(queueParam === "brief" ? "brief" : "dev");
+  const [queue, setQueue] = useState<QueueId>("dev");
   const [seenQueueParam, setSeenQueueParam] = useState(queueParam);
   if (seenQueueParam !== queueParam) {
     setSeenQueueParam(queueParam);
-    if (queueParam === "brief") setQueue("brief");
-    else if (queueParam === "upload") setQueue((current) => (current === "upload" ? current : "dev"));
+    if (queueParam === "upload") setQueue((current) => (current === "upload" ? current : "dev"));
+    else if (queueParam === "examples") setQueue("examples");
     else setQueue("dev");
   }
-  const [query, setQuery] = useState("");
-  const [brief, setBrief] = useState<DeskPayload | null>(null);
-  const [briefStatus, setBriefStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [briefError, setBriefError] = useState<DeskFailure | null>(null);
-  const [rerunError, setRerunError] = useState<DeskFailure | null>(null);
-  const [briefBusy, setBriefBusy] = useState(false);
   const [dev, setDev] = useState<ResultPayload | null>(null);
   const [devStatus, setDevStatus] = useState<"loading" | "ready" | "error">("loading");
   const [devError, setDevError] = useState<DeskFailure | null>(null);
   const [devQuery, setDevQuery] = useState("");
   const [devFilter, setDevFilter] = useState<FilterId>("all");
+  const [examples, setExamples] = useState<DeskPayload | null>(null);
+  const [examplesStatus, setExamplesStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [examplesError, setExamplesError] = useState<DeskFailure | null>(null);
+  const [examplesQuery, setExamplesQuery] = useState("");
+  const [examplesFilter, setExamplesFilter] = useState<FilterId>("all");
   const [upload, setUpload] = useState<ResultPayload | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<DeskFailure | null>(null);
@@ -53,8 +47,8 @@ export function Desk() {
   const hitParam = searchParams.get("hit");
   const explanation = useMemo(() => {
     if (!hitParam) return null;
-    if (queue === "brief") {
-      const item = brief?.cases.find((entry) => entry.hitId === hitParam);
+    if (queue === "examples") {
+      const item = examples?.cases.find((entry) => entry.hitId === hitParam);
       return item ? explainCase(item) : null;
     }
     if (queue === "upload") {
@@ -71,10 +65,10 @@ export function Desk() {
     return row
       ? explainRow(
           row,
-          "The development run does not include the customer files. These are the evidence ids the resolver wrote.",
+          "These are the evidence ids the resolver wrote. The customer, account, notes, checks, and hit are read from the development folder.",
         )
       : null;
-  }, [brief, dev, hitParam, queue, upload]);
+  }, [dev, examples, hitParam, queue, upload]);
 
   const applyParams = useCallback(
     (next: Record<string, string | null>) => {
@@ -95,42 +89,18 @@ export function Desk() {
 
   useEffect(() => {
     if (!hitParam) return;
-    if (queue === "brief" && briefStatus === "ready" && !brief?.cases.some((item) => item.hitId === hitParam)) {
+    if (queue === "dev" && devStatus === "ready" && !dev?.rows.some((row) => row.hitId === hitParam)) {
       applyParams({ hit: null });
       return;
     }
-    if (queue === "dev" && devStatus === "ready" && !dev?.rows.some((row) => row.hitId === hitParam)) {
+    if (queue === "examples" && examplesStatus === "ready" && !examples?.cases.some((item) => item.hitId === hitParam)) {
       applyParams({ hit: null });
       return;
     }
     if (queue === "upload" && upload && !upload.rows.some((row) => row.hitId === hitParam)) {
       applyParams({ hit: null });
     }
-  }, [applyParams, brief, briefStatus, dev, devStatus, hitParam, queue, upload]);
-
-  const loadBrief = useCallback(async () => {
-    setBriefStatus("loading");
-    setBriefError(null);
-    try {
-      const response = await fetch("/api/cases", { cache: "no-store" });
-      const body = (await response.json()) as DeskPayload & DeskFailure;
-      if (!response.ok || !body.cases) {
-        setBrief(null);
-        setBriefStatus("error");
-        setBriefError({
-          error: body.error || "The queue could not be loaded.",
-          detail: body.detail,
-        });
-        return;
-      }
-      setBrief(body);
-      setBriefStatus("ready");
-    } catch {
-      setBrief(null);
-      setBriefStatus("error");
-      setBriefError({ error: "The desk could not reach the resolver." });
-    }
-  }, []);
+  }, [applyParams, dev, devStatus, examples, examplesStatus, hitParam, queue, upload]);
 
   const loadDev = useCallback(async () => {
     setDevStatus("loading");
@@ -154,36 +124,6 @@ export function Desk() {
       setDevStatus("error");
       setDevError({ error: "The desk could not read the development run." });
     }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch("/api/cases", { cache: "no-store" });
-        const body = (await response.json()) as DeskPayload & DeskFailure;
-        if (cancelled) return;
-        if (!response.ok || !body.cases) {
-          setBrief(null);
-          setBriefStatus("error");
-          setBriefError({
-            error: body.error || "The queue could not be loaded.",
-            detail: body.detail,
-          });
-          return;
-        }
-        setBrief(body);
-        setBriefStatus("ready");
-      } catch {
-        if (cancelled) return;
-        setBrief(null);
-        setBriefStatus("error");
-        setBriefError({ error: "The desk could not reach the resolver." });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
@@ -216,6 +156,60 @@ export function Desk() {
     };
   }, []);
 
+  const loadExamples = useCallback(async () => {
+    setExamplesStatus("loading");
+    setExamplesError(null);
+    try {
+      const response = await fetch("/api/cases", { cache: "no-store" });
+      const body = (await response.json()) as DeskPayload & DeskFailure;
+      if (!response.ok || !body.cases) {
+        setExamples(null);
+        setExamplesStatus("error");
+        setExamplesError({
+          error: body.error || "The practice examples could not be read.",
+          detail: body.detail,
+        });
+        return;
+      }
+      setExamples(body);
+      setExamplesStatus("ready");
+    } catch {
+      setExamples(null);
+      setExamplesStatus("error");
+      setExamplesError({ error: "The desk could not read the practice examples." });
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/cases", { cache: "no-store" });
+        const body = (await response.json()) as DeskPayload & DeskFailure;
+        if (cancelled) return;
+        if (!response.ok || !body.cases) {
+          setExamples(null);
+          setExamplesStatus("error");
+          setExamplesError({
+            error: body.error || "The practice examples could not be read.",
+            detail: body.detail,
+          });
+          return;
+        }
+        setExamples(body);
+        setExamplesStatus("ready");
+      } catch {
+        if (cancelled) return;
+        setExamples(null);
+        setExamplesStatus("error");
+        setExamplesError({ error: "The desk could not read the practice examples." });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const openQueue = useCallback(
     (next: QueueId) => {
       if (next === "upload" && !upload) return;
@@ -227,29 +221,6 @@ export function Desk() {
     },
     [applyParams, upload],
   );
-
-  const rerun = useCallback(async () => {
-    setBriefBusy(true);
-    setRerunError(null);
-    try {
-      const response = await fetch("/api/cases", { method: "POST", cache: "no-store" });
-      const body = (await response.json()) as DeskPayload & DeskFailure;
-      if (!response.ok || !body.cases) {
-        setRerunError({
-          error: body.error || "The resolver did not finish.",
-          detail: body.detail,
-        });
-        return;
-      }
-      setBrief(body);
-      setBriefStatus("ready");
-      setBriefError(null);
-    } catch {
-      setRerunError({ error: "The desk could not reach the resolver." });
-    } finally {
-      setBriefBusy(false);
-    }
-  }, []);
 
   const sendFile = useCallback(
     async (file: File) => {
@@ -286,20 +257,12 @@ export function Desk() {
     [applyParams],
   );
 
-  const visible = useMemo(() => {
-    const cases = brief?.cases ?? [];
-    const needle = query.trim().toLowerCase();
+  const examplesView = useMemo(() => {
+    const cases = examples?.cases ?? [];
+    const needle = examplesQuery.trim().toLowerCase();
     const searched = needle
       ? cases.filter((item) =>
-          [
-            item.screened.name,
-            item.hit.name,
-            item.hitId,
-            item.alertId,
-            item.resolution.customer_record_id ?? "",
-            item.resolution.reason_code,
-            item.resolution.decision,
-          ]
+          [item.screened.name, item.hit.name, item.hitId, item.alertId, item.resolution.reason_code, item.resolution.decision]
             .join(" ")
             .toLowerCase()
             .includes(needle),
@@ -311,26 +274,24 @@ export function Desk() {
       confirm: searched.filter((item) => item.resolution.decision === "SAME_ENTITY").length,
       review: searched.filter((item) => item.resolution.decision === "REVIEW").length,
     };
-    const selected = FILTERS.find((item) => item.id === filter);
+    const selected = FILTERS.find((item) => item.id === examplesFilter);
     const filtered = selected?.decision
       ? searched.filter((item) => item.resolution.decision === selected.decision)
       : searched;
     return { counts, filtered };
-  }, [brief, filter, query]);
+  }, [examples, examplesFilter, examplesQuery]);
 
   const notice =
     queue === "dev" && devStatus === "ready"
       ? dev?.notice
-      : queue === "brief" && briefStatus === "ready"
-        ? brief?.notice
+      : queue === "examples" && examplesStatus === "ready"
+        ? examples?.notice
         : queue === "upload"
           ? upload?.notice
           : null;
 
   return (
     <DeskFrame
-      onRerun={queue === "brief" ? () => void rerun() : undefined}
-      busy={briefBusy}
       notice={notice}
       panelOpen={Boolean(hitParam)}
       panel={
@@ -367,25 +328,33 @@ export function Desk() {
         />
       ) : null}
 
-      {queue === "brief" ? (
-        <BriefQueue
-          status={briefStatus}
-          error={briefError}
-          rerunError={rerunError}
-          payload={brief}
-          visible={visible}
-          filter={filter}
-          query={query}
-          activeHitId={queue === "brief" ? hitParam : null}
-          onFilter={(next) => applyParams({ filter: next === "all" ? null : next })}
-          onQuery={setQuery}
-          onOpen={(id) => applyParams({ hit: id })}
-          onReset={() => {
-            setQuery("");
-            applyParams({ filter: null });
-          }}
-          onRetry={() => void loadBrief()}
-        />
+      {queue === "examples" ? (
+        examplesStatus === "loading" ? (
+          <LoadingState />
+        ) : examplesStatus === "error" ? (
+          <Failure
+            title="The practice examples did not load"
+            error={examplesError}
+            action="Try again"
+            onAction={() => void loadExamples()}
+          />
+        ) : (
+          <QueuePanel
+            cases={examplesView.filtered}
+            counts={examplesView.counts}
+            filter={examplesFilter}
+            query={examplesQuery}
+            activeId={hitParam}
+            hidden={false}
+            onFilter={setExamplesFilter}
+            onQuery={setExamplesQuery}
+            onOpen={(id) => applyParams({ hit: id })}
+            onReset={() => {
+              setExamplesQuery("");
+              setExamplesFilter("all");
+            }}
+          />
+        )
       ) : null}
 
       {queue === "upload" && upload ? (
@@ -466,80 +435,6 @@ function DevQueue({
       onReset={onReset}
       caption="Development screening results"
     />
-  );
-}
-
-function BriefQueue({
-  status,
-  error,
-  rerunError,
-  payload,
-  visible,
-  filter,
-  query,
-  activeHitId,
-  onFilter,
-  onQuery,
-  onOpen,
-  onReset,
-  onRetry,
-}: {
-  status: "loading" | "ready" | "error";
-  error: DeskFailure | null;
-  rerunError: DeskFailure | null;
-  payload: DeskPayload | null;
-  visible: { counts: Record<FilterId, number>; filtered: DeskPayload["cases"] };
-  filter: FilterId;
-  query: string;
-  activeHitId: string | null;
-  onFilter: (filter: FilterId) => void;
-  onQuery: (query: string) => void;
-  onOpen: (hitId: string) => void;
-  onReset: () => void;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="grid gap-4">
-      {rerunError ? (
-        <Alert variant="destructive" className="bg-card px-4 py-3" data-testid="rerun-error">
-          <AlertTitle>The resolver did not finish</AlertTitle>
-          <AlertDescription>
-            <p>{rerunError.error}</p>
-            {rerunError.detail ? (
-              <pre className="mt-2 max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap">
-                {rerunError.detail}
-              </pre>
-            ) : null}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {status === "loading" ? <LoadingState /> : null}
-      {status === "error" ? (
-        <Failure title="The queue did not load" error={error} action="Try again" onAction={onRetry} />
-      ) : null}
-      {status === "ready" && payload && payload.cases.length === 0 ? (
-        <div data-testid="empty" className="border border-border bg-card px-4 py-6">
-          <h2 className="font-heading text-xl">The resolver returned no hits</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            The fictional fixture produced an empty queue. Re-run the resolver if that is unexpected.
-          </p>
-        </div>
-      ) : null}
-      {status === "ready" && payload && payload.cases.length > 0 ? (
-        <QueuePanel
-          cases={visible.filtered}
-          counts={visible.counts}
-          filter={filter}
-          query={query}
-          activeId={activeHitId}
-          hidden={false}
-          onFilter={onFilter}
-          onQuery={onQuery}
-          onOpen={onOpen}
-          onReset={onReset}
-        />
-      ) : null}
-    </div>
   );
 }
 

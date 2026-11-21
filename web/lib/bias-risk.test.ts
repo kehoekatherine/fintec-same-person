@@ -1,47 +1,79 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import test from "node:test";
 
 import { biasRiskForCase, scoreBias, type BiasInput } from "./bias-risk.ts";
-import type { DeskCase } from "./types.ts";
+import type { DeskCase, Decision } from "./types.ts";
 
-const fixture = path.join(import.meta.dirname, "..", "fixtures", "brief");
-
-function lines(file: string): Record<string, unknown>[] {
-  return readFileSync(path.join(fixture, file), "utf8")
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
-}
+/** Published rule patterns. They are not development customers and the desk does not open them. */
+const PATTERNS: Record<string, { decision: Decision; reasonCode: string; customer: string; dob: string | null; country: string | null; listed: string; aliases: string[]; dobs: string[]; countries: string[] }> = {
+  "H-B10001": {
+    decision: "DIFFERENT_ENTITY",
+    reasonCode: "DOB_MISMATCH",
+    customer: "Mohammed Ali",
+    dob: "1988-03-14",
+    country: "United Kingdom",
+    listed: "Mohamed Ali",
+    aliases: [],
+    dobs: ["1952"],
+    countries: ["Egypt"],
+  },
+  "H-B10002": {
+    decision: "SAME_ENTITY",
+    reasonCode: "NAME_DOB_LOCATION_MATCH",
+    customer: "Li Wei",
+    dob: "1975",
+    country: "Singapore",
+    listed: "Wei Li",
+    aliases: ["Li Wei"],
+    dobs: ["1975"],
+    countries: ["Singapore"],
+  },
+  "H-B10003": {
+    decision: "REVIEW",
+    reasonCode: "INSUFFICIENT_DATA",
+    customer: "Anna K. Petrova",
+    dob: null,
+    country: null,
+    listed: "Anna Petrova",
+    aliases: [],
+    dobs: ["1969"],
+    countries: ["Russia"],
+  },
+  "H-B10004": {
+    decision: "DIFFERENT_ENTITY",
+    reasonCode: "TEMPORAL_IMPOSSIBILITY",
+    customer: "Tom Okafor",
+    dob: "2004",
+    country: "Nigeria",
+    listed: "Thomas Okafor",
+    aliases: [],
+    dobs: [],
+    countries: [],
+  },
+};
 
 function briefCase(hitId: string): DeskCase {
-  const resolution = lines("resolved.jsonl").find((row) => row.hit_id === hitId);
-  const alert = lines("alerts.jsonl").find((row) => row.alert_id === resolution?.alert_id);
-  const hit = lines("hits.jsonl").find((row) => row.hit_id === hitId);
-  const customer = (alert?.customer ?? {}) as Record<string, unknown>;
-  if (!resolution || !hit) throw new Error(`missing ${hitId}`);
+  const pattern = PATTERNS[hitId];
+  if (!pattern) throw new Error(`missing ${hitId}`);
   return {
     hitId,
-    alertId: String(resolution.alert_id),
+    alertId: "A-pattern",
     screened: {
-      name: String(customer.name ?? ""),
+      name: pattern.customer,
       entityType: null,
-      dob: typeof customer.dob === "string" ? customer.dob : null,
-      country: typeof customer.country === "string" ? customer.country : null,
+      dob: pattern.dob,
+      country: pattern.country,
       city: null,
       screenedAt: null,
       accountRef: null,
     },
     hit: {
-      name: String(hit.name ?? ""),
-      aliases: Array.isArray(hit.aliases) ? hit.aliases.filter((item): item is string => typeof item === "string") : [],
+      name: pattern.listed,
+      aliases: pattern.aliases,
       entityType: null,
-      dobs: Array.isArray(hit.dobs) ? hit.dobs.filter((item): item is string => typeof item === "string") : [],
+      dobs: pattern.dobs,
       placeOfBirth: null,
-      countries: Array.isArray(hit.countries)
-        ? hit.countries.filter((item): item is string => typeof item === "string")
-        : [],
+      countries: pattern.countries,
       nationality: [],
       category: null,
       allegation: null,
@@ -50,14 +82,20 @@ function briefCase(hitId: string): DeskCase {
     },
     resolution: {
       hit_id: hitId,
-      alert_id: String(resolution.alert_id),
-      decision: resolution.decision as DeskCase["resolution"]["decision"],
-      reason_code: String(resolution.reason_code),
-      customer_record_id: typeof resolution.customer_record_id === "string" ? resolution.customer_record_id : null,
-      reason: String(resolution.reason),
+      alert_id: "A-pattern",
+      decision: pattern.decision,
+      reason_code: pattern.reasonCode,
+      customer_record_id: null,
+      reason: "",
       evidence: [],
+      comparison: null,
+      closeness: null,
     },
     evidence: [],
+    customerNote: "",
+    groundsChecked: false,
+    applicableCodes: [],
+    customerMissing: false,
   };
 }
 
@@ -77,7 +115,7 @@ function input(partial: Partial<BiasInput> & Pick<BiasInput, "decision">): BiasI
   };
 }
 
-test("brief review and confirm scores use only the facts on the case", () => {
+test("review and confirm scores use only the facts on the case", () => {
   const review = biasRiskForCase(briefCase("H-B10003"));
   const confirm = biasRiskForCase(briefCase("H-B10002"));
   assert.ok(review);

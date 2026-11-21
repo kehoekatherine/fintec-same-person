@@ -18,7 +18,7 @@ export const GROUND_PRIORITY = [
 export const UNCHECKED_GROUNDS = "Other grounds were not re-checked.";
 
 export type Explanation = {
-  source: "brief" | "row";
+  source: "examples" | "row";
   key: string;
   hitId: string;
   alertId: string;
@@ -79,7 +79,7 @@ export function customerFileMessage(customerRecordId: string | null, missing: bo
 
 export function explainCase(item: DeskCase): Explanation {
   return {
-    source: "brief",
+    source: "examples",
     key: item.hitId,
     hitId: item.hitId,
     alertId: item.alertId,
@@ -97,7 +97,8 @@ export function explainCase(item: DeskCase): Explanation {
     hit: item.hit,
     evidence: item.evidence,
     evidenceIds: item.resolution.evidence,
-    evidenceNote: "The resolver cites only the records that decided the hit.",
+    evidenceNote:
+      "These records are read from the development data folder: the customer, the cited evidence, and the notes and checks joined for this hit.",
     customerDob: item.screened.dob,
     customerCountry: item.screened.country,
     comparison: item.resolution.comparison,

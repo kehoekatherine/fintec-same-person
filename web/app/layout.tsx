@@ -13,7 +13,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Screening desk",
   description:
-    "A screening desk for the recorded development run and four fictional brief cases. Not a live watchlist and not a regulatory filing.",
+    "A screening desk for the development run and the practice-label hits from that data folder. Not a live watchlist and not a regulatory filing.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

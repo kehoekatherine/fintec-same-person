@@ -87,9 +87,9 @@ When several people fit the alert and every comparison reaches the same decision
 
 `evidence` lists only the record ids that decided the hit. A date-of-birth clearance cites the check or note that supplied the customer's date, and the search result when the hit's year came from search. A confirmed hit cites the customer records and the check or note that supplied the agreeing identity or country, plus the search result when one was used. A review cites the records that supply the shared country: if the customer file itself does not share a country but a note says the customer lived in the hit's country, that note is the evidence. Accounts, alerts, and notes about a country that played no part are left out.
 
-## Three cases from the brief
+## How four published patterns are decided
 
-These are the examples published with the task, and the rule each one falls under.
+The task statement uses four patterns to show the rules. They are not rows in the development data, and the desk does not open them.
 
 **Clear.** Mohammed Ali, born 14 March 1988 in London, against Mohamed Ali, born 1952 in Cairo. The names agree, but the birth years differ by more than one. That is `DOB_MISMATCH`, a different person.
 

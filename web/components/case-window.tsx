@@ -61,9 +61,7 @@ function ExplanationBody({ item }: { item: Explanation }) {
       <CaseComparison model={comparisonFromExplanation(item)} />
       {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
       {bias ? <BiasRiskPanel score={bias} /> : null}
-      {item.source === "row" ? (
-        <DevRecord hitId={item.hitId} alertId={item.alertId} customerRecordId={item.customerRecordId} />
-      ) : null}
+      <DevRecord hitId={item.hitId} alertId={item.alertId} customerRecordId={item.customerRecordId} />
     </div>
   );
 }

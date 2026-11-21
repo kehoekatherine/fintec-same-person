@@ -1,10 +1,10 @@
-import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { readCloseness, readComparison } from "@/lib/closeness";
 import { parseCsv, stableId } from "@/lib/csv";
-import { findDevPack } from "@/lib/data-pack";
+import { MISSING_DATA_FOLDER, findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
 import { loadApplicableCodes } from "@/lib/grounds";
@@ -202,10 +202,7 @@ async function scoreBundle(bundle: HitBundle): Promise<{
   const hitsOnly = (bundle.extras.customers?.length ?? 0) === 0;
   const pack = hitsOnly ? await findDevPack() : null;
   if (hitsOnly && !pack) {
-    throw new DeskError(
-      "A hits-only file is scored against the development customers.jsonl, and that file is not on this machine.",
-      { status: 404 },
-    );
+    throw new DeskError(`${MISSING_DATA_FOLDER} A hits-only file is scored against that folder.`, { status: 404 });
   }
   const dir = await mkdtemp(path.join(tmpdir(), "screening-upload-"));
   try {
@@ -230,7 +227,9 @@ async function scoreBundle(bundle: HitBundle): Promise<{
     } else if (hitsOnly && pack) {
       await symlink(path.join(pack, "name_variants.json"), variantsPath);
     } else {
-      await copyFile(await briefVariantsPath(), variantsPath);
+      const packDir = await findDevPack();
+      if (!packDir) throw new DeskError(MISSING_DATA_FOLDER, { status: 404 });
+      await symlink(path.join(packDir, "name_variants.json"), variantsPath);
     }
     const rows = await runEngineOn(dir, 180_000);
     const codes = await loadApplicableCodes(dir, 180_000);
@@ -252,24 +251,6 @@ function requireCustomerIds(rows: Record<string, unknown>[]): Record<string, unk
       status: 400,
       detail: `Customer row ${index + 1} has no record_id.`,
     });
-  });
-}
-
-async function briefVariantsPath(): Promise<string> {
-  const candidates = [
-    path.resolve(process.cwd(), "fixtures", "brief", "name_variants.json"),
-    path.resolve(process.cwd(), "web", "fixtures", "brief", "name_variants.json"),
-  ];
-  for (const candidate of candidates) {
-    try {
-      await readFile(candidate);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  throw new DeskError("The resolver's name list is not available, so the file cannot be scored.", {
-    status: 500,
   });
 }
 

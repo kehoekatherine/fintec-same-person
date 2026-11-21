@@ -11,6 +11,12 @@ export type PackIndex = {
   accountsByCustomer: Map<string, Row[]>;
   hits: Map<string, Row>;
   alerts: Map<string, Row>;
+  notes: Map<string, Row>;
+  notesByEmail: Map<string, Row[]>;
+  checks: Map<string, Row>;
+  checksByApplicant: Map<string, Row[]>;
+  applicantsByCustomer: Map<string, string[]>;
+  searches: Map<string, Row>;
 };
 
 let loading: Promise<PackIndex | null> | null = null;
@@ -34,11 +40,15 @@ export function customerPresence(index: PackIndex | null, id: string | null): bo
 async function readIndex(): Promise<PackIndex | null> {
   const dir = await findDevPack();
   if (!dir) return null;
-  const [customers, accounts, hits, alerts] = await Promise.all([
+  const [customers, accounts, hits, alerts, notes, checks, searches, onboarding] = await Promise.all([
     readRows(path.join(dir, "customers.jsonl")),
     readRows(path.join(dir, "accounts.jsonl")),
     readRows(path.join(dir, "hits.jsonl")),
     readRows(path.join(dir, "alerts.jsonl")),
+    readRows(path.join(dir, "notes.jsonl")),
+    readRows(path.join(dir, "kyc_checks.jsonl")),
+    readRows(path.join(dir, "search_results.jsonl")),
+    readRows(path.join(dir, "onboarding.jsonl")),
   ]);
   const customerMap = new Map<string, Row>();
   for (const row of customers) {
@@ -66,7 +76,57 @@ async function readIndex(): Promise<PackIndex | null> {
     const id = stringOf(row.alert_id);
     if (id && !alertMap.has(id)) alertMap.set(id, row);
   }
-  return { dir, customers: customerMap, accountsById, accountsByCustomer, hits: hitMap, alerts: alertMap };
+  const noteMap = indexBy(notes, "note_id");
+  const notesByEmail = new Map<string, Row[]>();
+  for (const row of notes) {
+    const email = stringOf(row.requester_email)?.toLowerCase();
+    if (!email) continue;
+    const list = notesByEmail.get(email);
+    if (list) list.push(row);
+    else notesByEmail.set(email, [row]);
+  }
+  const checkMap = indexBy(checks, "check_id");
+  const checksByApplicant = new Map<string, Row[]>();
+  for (const row of checks) {
+    const applicant = stringOf(row.applicant_id);
+    if (!applicant) continue;
+    const list = checksByApplicant.get(applicant);
+    if (list) list.push(row);
+    else checksByApplicant.set(applicant, [row]);
+  }
+  const applicantsByCustomer = new Map<string, string[]>();
+  for (const row of onboarding) {
+    const customerId = stringOf(row.customer_id);
+    const applicant = stringOf(row.kyc_applicant_id);
+    if (!customerId || !applicant) continue;
+    const list = applicantsByCustomer.get(customerId);
+    if (list) {
+      if (!list.includes(applicant)) list.push(applicant);
+    } else applicantsByCustomer.set(customerId, [applicant]);
+  }
+  return {
+    dir,
+    customers: customerMap,
+    accountsById,
+    accountsByCustomer,
+    hits: hitMap,
+    alerts: alertMap,
+    notes: noteMap,
+    notesByEmail,
+    checks: checkMap,
+    checksByApplicant,
+    applicantsByCustomer,
+    searches: indexBy(searches, "result_id"),
+  };
+}
+
+function indexBy(rows: Row[], key: string): Map<string, Row> {
+  const map = new Map<string, Row>();
+  for (const row of rows) {
+    const id = stringOf(row[key]);
+    if (id && !map.has(id)) map.set(id, row);
+  }
+  return map;
 }
 
 async function readRows(file: string): Promise<Row[]> {

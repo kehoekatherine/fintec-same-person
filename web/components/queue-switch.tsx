@@ -5,7 +5,7 @@ import type { QueueId } from "@/lib/types";
 
 const QUEUES: { id: QueueId; label: string }[] = [
   { id: "dev", label: "Development run" },
-  { id: "brief", label: "Fictional brief" },
+  { id: "examples", label: "Practice examples" },
 ];
 
 export function QueueSwitch({

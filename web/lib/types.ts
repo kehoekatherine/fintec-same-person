@@ -174,8 +174,12 @@ export type ResultPayload = {
   notice: string;
   rows: ResultRow[];
   model?: ModelFitness;
-  /** Practice labels for the development run, when this machine has them. */
+  /** Labels from this run's own folder. They are not taken from another dataset. */
   labels?: PracticeLabel[];
+  /** A second label file in the same folder, when the folder has one. */
+  heldOutLabels?: PracticeLabel[];
+  /** Set when the rows come from a dataset found on this machine. */
+  datasetName?: string;
 };
 
 export type DeskFailure = {

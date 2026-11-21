@@ -27,7 +27,7 @@ export function UploadControl({
         {busy ? "Reading file…" : "Choose file"}
         <input
           type="file"
-          accept=".csv,.json,.jsonl,text/csv,application/json"
+          accept=".csv,.json,.jsonl,.zip,text/csv,application/json,application/zip"
           className="sr-only"
           data-testid="upload-input"
           disabled={busy}
@@ -41,9 +41,10 @@ export function UploadControl({
       <details className="text-sm text-muted-foreground">
         <summary className="cursor-pointer">File format</summary>
         <p className="mt-1 max-w-3xl leading-5" data-testid="upload-hint">
-          Expected CSV columns: hit_id, alert_id, name, entity_type, dob, country, city, aliases. JSON may be an
-          array of hits, JSONL, or an object with hits. A hits-only file is scored against the development
-          customers.jsonl. Customer ids are not invented.
+          Add a .zip of a data folder, or a .json bundle of its files: customers, hits, alerts, accounts,
+          onboarding, kyc checks, notes, search results, and name variants. Labels in that same folder are optional.
+          A hits-only file is not joined to another customer file; the missing file is named. A file that already has
+          a decision on every row is shown as recorded.
         </p>
       </details>
       {error ? (

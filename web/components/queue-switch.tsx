@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import type { QueueId } from "@/lib/types";
 
-const QUEUES: { id: QueueId; label: string }[] = [{ id: "dev", label: "Development run" }];
+const QUEUES: { id: QueueId; label: string }[] = [{ id: "dev", label: "Local dataset" }];
 
 export function QueueSwitch({
   queue,

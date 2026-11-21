@@ -25,12 +25,11 @@ export async function POST(request: Request) {
   }
   const file = form.get("file");
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Choose a CSV or JSON file to add." }, { status: 400 });
+    return NextResponse.json({ error: "Choose a CSV, JSON, or zip file to add." }, { status: 400 });
   }
   try {
     const { acceptUpload } = await import("@/lib/upload");
-    const { annotateModelFitness } = await import("@/lib/practice-labels");
-    return NextResponse.json(await annotateModelFitness(await acceptUpload(file)));
+    return NextResponse.json(await acceptUpload(file));
   } catch (error) {
     return failure(error);
   }

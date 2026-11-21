@@ -1,7 +1,7 @@
 import { access, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 
-import { MISSING_DATA_FOLDER, findDevPack } from "@/lib/data-pack";
+import { MISSING_DATA_FOLDER, PUBLIC_PACK_UNAVAILABLE, findDevPack, publishedHost } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { loadApplicableCodes } from "@/lib/grounds";
 import { runEngineOn } from "@/lib/engine";
@@ -43,8 +43,8 @@ export async function loadDevelopmentRun(): Promise<ResultPayload> {
     source: "development",
     mode: resolved.fresh ? "scored" : "recorded",
     notice: resolved.fresh
-      ? "Decisions from system/run. An id missing from customers.jsonl is not opened as a customer."
-      : "The Python resolver is not available, so these are the recorded decisions in output/dev.jsonl.",
+      ? "Dataset found on this machine. Decisions come from system/run on that folder. Labels are read only from the same folder."
+      : "Dataset found on this machine. The resolver is not available, so these are the recorded decisions already written for that folder.",
     rows: resolved.rows.map((row) => decorate(row, index, codes)),
   };
 }
@@ -83,6 +83,9 @@ function freshResolutions(dir: string): Promise<Resolution[]> {
 }
 
 async function readCommitted(): Promise<Resolution[]> {
+  if (publishedHost()) {
+    throw new DeskError(PUBLIC_PACK_UNAVAILABLE, { status: 404 });
+  }
   const file = await resolveOutputFile("dev.jsonl");
   if (!file) {
     throw new DeskError("The development run output/dev.jsonl is not in this deployment.", { status: 404 });

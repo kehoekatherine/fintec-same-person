@@ -19,7 +19,9 @@ export async function GET() {
   try {
     const { loadDevelopmentRun } = await import("@/lib/dev-run");
     const { annotateModelFitness } = await import("@/lib/practice-labels");
-    return NextResponse.json(await annotateModelFitness(await loadDevelopmentRun()));
+    const { attachFolderLabels } = await import("@/lib/run-labels");
+    const scored = await annotateModelFitness(await loadDevelopmentRun());
+    return NextResponse.json(await attachFolderLabels(scored));
   } catch (error) {
     return failure(error);
   }

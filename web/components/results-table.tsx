@@ -9,12 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ReviewerCostLine } from "@/components/reviewer-cost";
 import { filterResults } from "@/lib/filter-results";
 import { DECISION_LABEL, FILTERS } from "@/lib/labels";
 import { confidenceFor } from "@/lib/list-scores";
 import { nextSort, sortRows, type SortKey, type SortState } from "@/lib/list-sort";
-import type { FilterId, PracticeLabel, ResultRow } from "@/lib/types";
+import type { FilterId, ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
 const PAGE_CHOICES = [
@@ -37,7 +36,6 @@ export function ResultsTable({
   onOpen,
   onReset,
   caption,
-  labels,
 }: {
   rows: ResultRow[];
   query: string;
@@ -49,7 +47,6 @@ export function ResultsTable({
   onOpen: (row: ResultRow) => void;
   onReset: () => void;
   caption: string;
-  labels?: PracticeLabel[] | null;
 }) {
   const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -93,7 +90,6 @@ export function ResultsTable({
 
   return (
     <section className="flex flex-col gap-2 lg:h-full lg:min-h-0" aria-label={caption} data-testid="results-table">
-      <ReviewerCostLine rows={rows} labels={labels} />
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by decision">
         {FILTERS.map((item) => {
           const pressed = filter === item.id;

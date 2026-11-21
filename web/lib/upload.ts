@@ -1,15 +1,16 @@
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { readCloseness, readComparison } from "@/lib/closeness";
 import { parseCsv, stableId } from "@/lib/csv";
-import { MISSING_DATA_FOLDER, findDevPack, publishedHost } from "@/lib/data-pack";
+import { DEV_PACK_FILES } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
 import { loadApplicableCodes } from "@/lib/grounds";
-import { customerPresence, loadPackIndex } from "@/lib/pack-index";
-import type { Decision, Resolution, ResultPayload, ResultRow } from "@/lib/types";
+import { HELD_OUT_LABEL_FILES, labelsFromRows, PRACTICE_LABEL_FILE, readLabelSets } from "@/lib/run-labels";
+import type { Decision, PracticeLabel, Resolution, ResultPayload, ResultRow } from "@/lib/types";
 import { displayFileName, isAcceptedExtension, MAX_UPLOAD_BYTES, uploadRejection } from "@/lib/upload-file";
 
 const JSONL_FILES = {
@@ -65,6 +66,20 @@ type HitBundle = {
   hits: Record<string, unknown>[];
   extras: Partial<Record<keyof typeof JSONL_FILES, Record<string, unknown>[]>>;
   nameVariants: Record<string, unknown> | null;
+  labels: PracticeLabel[];
+  heldOutLabels: PracticeLabel[] | null;
+};
+
+const SCREENING_KEYS: Record<string, keyof typeof JSONL_FILES | "hits" | "name_variants"> = {
+  "hits.jsonl": "hits",
+  "customers.jsonl": "customers",
+  "accounts.jsonl": "accounts",
+  "onboarding.jsonl": "onboarding",
+  "kyc_checks.jsonl": "kyc_checks",
+  "notes.jsonl": "notes",
+  "alerts.jsonl": "alerts",
+  "search_results.jsonl": "search_results",
+  "name_variants.json": "name_variants",
 };
 
 export async function acceptUpload(file: File): Promise<ResultPayload> {
@@ -76,60 +91,31 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
   if (buffer.length > MAX_UPLOAD_BYTES) {
     throw new DeskError("That file is larger than 8 MB.", { status: 413 });
   }
+  const extension = fileExtensionOf(filename);
+  if (extension === "zip" || isZipBuffer(buffer)) {
+    return scoreZip(buffer, filename);
+  }
+  const textExtension = extension;
   if (buffer.includes(0)) {
     throw new DeskError("The file is not plain text CSV or JSON.", { status: 400 });
   }
   const text = buffer.toString("utf8");
-  const extension = fileExtensionOf(filename);
-  const names = new Map<string, string | null>();
-
-  if (looksLikeResults(text, extension)) {
-    const rows = await markCustomers(resultsFrom(text, extension));
-    return {
-      source: "upload",
-      mode: "recorded",
-      filename,
-      notice: publishedHost()
-        ? `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are not checked against a private customer file.`
-        : `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are checked against the development customers.jsonl and are not invented. They stay in this browser session and are not saved.`,
-      rows,
-    };
+  if (textExtension !== "csv" && isScreeningDocument(text, textExtension)) {
+    return scoreBundle(bundleFrom(text, textExtension), filename);
+  }
+  if (looksLikeResults(text, textExtension)) {
+    const labels = labelsInText(text, textExtension);
+    return recordedPayload(filename, resultsFrom(text, textExtension), labels.labels, labels.heldOutLabels);
   }
 
-  const bundle = bundleFrom(text, extension);
-  for (const hit of bundle.hits) {
-    const id = stringOf(hit.hit_id);
-    if (id) names.set(id, stringOf(hit.name));
-  }
-  const scored = await scoreBundle(bundle);
-  return {
-    source: "upload",
-    mode: "scored",
-    filename,
-    notice: scored.joinedDev
-      ? `system/run scored ${filename} against the development customers.jsonl. Customer ids come only from that file. These rows stay in this browser session and are not saved.`
-      : `system/run scored ${filename} with the customers in that file. Customer ids are not invented. These rows stay in this browser session and are not saved.`,
-    rows: await markCustomers(
-      scored.rows.map((row) => {
-        const applicable = scored.codes?.get(row.hit_id);
-        const customerId = row.customer_record_id;
-        return {
-          ...toResultRow(row, names.get(row.hit_id) ?? null),
-          groundsChecked: applicable != null,
-          applicableCodes: applicable ?? [],
-          customerMissing: scored.joinedDev
-            ? false
-            : Boolean(customerId && customerId !== "AMBIGUOUS" && !scored.customerIds.has(customerId)),
-        };
-      }),
-    ),
-  };
+  const bundle = bundleFrom(text, textExtension);
+  return scoreBundle(bundle, filename);
 }
 
-function fileExtensionOf(filename: string): "csv" | "json" | "jsonl" {
+function fileExtensionOf(filename: string): "csv" | "json" | "jsonl" | "zip" {
   const extension = filename.split(".").pop()?.toLowerCase() ?? "";
   if (!isAcceptedExtension(extension)) {
-    throw new DeskError("Only .csv, .json, and .jsonl files can be added.", { status: 415 });
+    throw new DeskError("Only .csv, .json, .jsonl, and .zip files can be added.", { status: 415 });
   }
   return extension;
 }
@@ -154,11 +140,11 @@ function resultsFrom(text: string, extension: "csv" | "json" | "jsonl"): ResultR
 
 function bundleFrom(text: string, extension: "csv" | "json" | "jsonl"): HitBundle {
   if (extension === "csv") {
-    return { hits: csvRecords(text).map(asHit), extras: {}, nameVariants: null };
+    return { hits: csvRecords(text).map(asHit), extras: {}, nameVariants: null, labels: [], heldOutLabels: null };
   }
   const parsed = parseJsonDocument(text, extension);
   if (Array.isArray(parsed)) {
-    return { hits: objectsFrom(parsed, "hit").map(asHit), extras: {}, nameVariants: null };
+    return { hits: objectsFrom(parsed, "hit").map(asHit), extras: {}, nameVariants: null, labels: [], heldOutLabels: null };
   }
   if (!parsed || typeof parsed !== "object") {
     throw new DeskError("JSON must be an array of hits, JSONL, or an object with a hits list.", {
@@ -166,6 +152,7 @@ function bundleFrom(text: string, extension: "csv" | "json" | "jsonl"): HitBundl
     });
   }
   const record = parsed as Record<string, unknown>;
+  const labelSets = labelSetsFromRecord(record);
   if (Array.isArray(record.hits) || "hits" in record) {
     if (!Array.isArray(record.hits)) {
       throw new DeskError("hits must be a list of records.", { status: 400 });
@@ -182,81 +169,263 @@ function bundleFrom(text: string, extension: "csv" | "json" | "jsonl"): HitBundl
       hits: objectsFrom(record.hits, "hit").map(asHit),
       extras,
       nameVariants: nameVariantsFrom(record.name_variants),
+      labels: labelSets.labels,
+      heldOutLabels: labelSets.heldOutLabels,
     };
   }
-  return { hits: [asHit(record, 0)], extras: {}, nameVariants: null };
+  return { hits: [asHit(record, 0)], extras: {}, nameVariants: null, labels: [], heldOutLabels: null };
 }
 
-async function scoreBundle(bundle: HitBundle): Promise<{
-  rows: Resolution[];
-  joinedDev: boolean;
-  codes: Map<string, string[]> | null;
-  customerIds: Set<string>;
-}> {
-  if (bundle.hits.length === 0) {
-    throw new DeskError("The file has no hits to score.", { status: 400 });
+async function scoreBundle(bundle: HitBundle, filename: string): Promise<ResultPayload> {
+  const missing = missingBundleFiles(bundle);
+  if (missing.length > 0) {
+    throw new DeskError(missingUploadMessage(missing), { status: 400 });
   }
   const customerIds = new Set<string>();
   for (const row of bundle.extras.customers ?? []) {
     const id = stringOf(row.record_id);
     if (id) customerIds.add(id);
   }
-  const hitsOnly = (bundle.extras.customers?.length ?? 0) === 0;
-  const pack = hitsOnly && !publishedHost() ? await findDevPack() : null;
-  if (hitsOnly && !pack) {
-    throw new DeskError(
-      publishedHost()
-        ? "A hits-only file cannot be scored on this public desk."
-        : `${MISSING_DATA_FOLDER} A hits-only file is scored against that folder.`,
-      { status: 404 },
-    );
+  const names = new Map<string, string | null>();
+  for (const hit of bundle.hits) {
+    const id = stringOf(hit.hit_id);
+    if (id) names.set(id, stringOf(hit.name));
   }
   const dir = await mkdtemp(path.join(tmpdir(), "screening-upload-"));
   try {
     await writeFile(path.join(dir, "hits.jsonl"), toJsonl(bundle.hits), "utf8");
-    for (const [key, filename] of Object.entries(JSONL_FILES) as [keyof typeof JSONL_FILES, string][]) {
-      const provided = bundle.extras[key];
-      const dest = path.join(dir, filename);
-      if (provided && provided.length > 0) {
-        const rows = key === "customers" ? requireCustomerIds(provided) : withIds(provided, key);
-        await writeFile(dest, toJsonl(rows), "utf8");
-        continue;
-      }
-      if (hitsOnly && pack) {
-        await symlink(path.join(pack, filename), dest);
-        continue;
-      }
-      await writeFile(dest, "", "utf8");
+    for (const [key, fileName] of Object.entries(JSONL_FILES) as [keyof typeof JSONL_FILES, string][]) {
+      const provided = bundle.extras[key] ?? [];
+      const rows = key === "customers" ? requireCustomerIds(provided) : withIds(provided, key);
+      await writeFile(path.join(dir, fileName), toJsonl(rows), "utf8");
     }
-    const variantsPath = path.join(dir, "name_variants.json");
-    if (bundle.nameVariants) {
-      await writeFile(variantsPath, JSON.stringify(bundle.nameVariants), "utf8");
-    } else if (hitsOnly && pack) {
-      await symlink(path.join(pack, "name_variants.json"), variantsPath);
-    } else {
-      const packDir = publishedHost() ? null : await findDevPack();
-      if (packDir) {
-        await symlink(path.join(packDir, "name_variants.json"), variantsPath);
-      } else {
-        await writeFile(
-          variantsPath,
-          JSON.stringify({ groups: [], company_legal_forms: [] }),
-          "utf8",
-        );
-      }
-    }
-    const rows = await runEngineOn(dir, 180_000);
-    const codes = await loadApplicableCodes(dir, 180_000);
-    return { rows, joinedDev: Boolean(hitsOnly && pack), codes, customerIds };
+    await writeFile(path.join(dir, "name_variants.json"), JSON.stringify(bundle.nameVariants), "utf8");
+    return await payloadFromRun(dir, filename, customerIds, names, bundle.labels, bundle.heldOutLabels);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 }
 
-async function markCustomers(rows: ResultRow[]): Promise<ResultRow[]> {
-  if (publishedHost()) return rows;
-  const index = await loadPackIndex().catch(() => null);
-  return rows.map((row) => ({ ...row, customerInFile: customerPresence(index, row.customerRecordId) }));
+function missingBundleFiles(bundle: HitBundle): string[] {
+  const missing: string[] = [];
+  for (const fileName of DEV_PACK_FILES) {
+    const key = SCREENING_KEYS[fileName];
+    if (key === "hits") {
+      if (bundle.hits.length === 0) missing.push(fileName);
+      continue;
+    }
+    if (key === "name_variants") {
+      if (!bundle.nameVariants) missing.push(fileName);
+      continue;
+    }
+    if (!bundle.extras[key]) missing.push(fileName);
+  }
+  return missing;
+}
+
+function missingUploadMessage(missing: string[]): string {
+  return `This upload is missing ${missing.join(", ")}. A hits-only file is not joined to another customer file.`;
+}
+
+function recordedPayload(
+  filename: string,
+  rows: ResultRow[],
+  labels: PracticeLabel[],
+  heldOutLabels: PracticeLabel[] | null,
+): ResultPayload {
+  return {
+    source: "upload",
+    mode: "recorded",
+    filename,
+    notice: `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are not checked against another customer file. They stay in this browser session and are not saved.`,
+    rows,
+    labels: labels.length > 0 ? labels : undefined,
+    heldOutLabels: heldOutLabels ?? undefined,
+  };
+}
+
+async function payloadFromRun(
+  dir: string,
+  filename: string,
+  customerIds: Set<string>,
+  names: Map<string, string | null>,
+  labels: PracticeLabel[],
+  heldOutLabels: PracticeLabel[] | null,
+): Promise<ResultPayload> {
+  const [rows, codes] = await Promise.all([runEngineOn(dir, 180_000), loadApplicableCodes(dir, 180_000)]);
+  return {
+    source: "upload",
+    mode: "scored",
+    filename,
+    notice: `system/run scored ${filename} from the files in that upload. Customer ids come only from that upload. Labels, when the upload includes them, are scored only for this run. These rows stay in this browser session and are not saved.`,
+    rows: rows.map((row) => {
+      const applicable = codes?.get(row.hit_id);
+      const customerId = row.customer_record_id;
+      return {
+        ...toResultRow(row, names.get(row.hit_id) ?? null),
+        groundsChecked: applicable != null,
+        applicableCodes: applicable ?? [],
+        customerMissing: Boolean(customerId && customerId !== "AMBIGUOUS" && !customerIds.has(customerId)),
+      };
+    }),
+    labels: labels.length > 0 ? labels : undefined,
+    heldOutLabels: heldOutLabels ?? undefined,
+  };
+}
+
+const ZIP_SCRIPT = `
+import sys, zipfile
+from pathlib import Path
+src, dest, allowed_text = sys.argv[1], sys.argv[2], sys.argv[3]
+allowed = set(allowed_text.split(","))
+limit = 32 * 1024 * 1024
+total = 0
+chosen = {}
+with zipfile.ZipFile(src) as archive:
+    for info in archive.infolist():
+        if info.is_dir():
+            continue
+        parts = Path(info.filename).parts
+        if not parts or any(part in ("", ".", "..") for part in parts):
+            continue
+        base = parts[-1]
+        if base not in allowed and not base.endswith("labels.jsonl"):
+            continue
+        previous = chosen.get(base)
+        if previous is None or len(parts) < len(Path(previous.filename).parts):
+            chosen[base] = info
+    root = Path(dest)
+    root.mkdir(parents=True, exist_ok=True)
+    for base, info in chosen.items():
+        total += info.file_size
+        if total > limit:
+            sys.exit(3)
+        target = root / base
+        target.write_bytes(archive.read(info))
+`;
+
+function isZipBuffer(buffer: Buffer): boolean {
+  return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+}
+
+async function scoreZip(buffer: Buffer, filename: string): Promise<ResultPayload> {
+  const dir = await mkdtemp(path.join(tmpdir(), "screening-zip-"));
+  try {
+    const zipPath = path.join(dir, "upload.zip");
+    const dataDir = path.join(dir, "data");
+    await mkdir(dataDir);
+    await writeFile(zipPath, buffer);
+    await extractZip(zipPath, dataDir);
+    const missing: string[] = [];
+    for (const fileName of DEV_PACK_FILES) {
+      try {
+        await access(path.join(dataDir, fileName));
+      } catch {
+        missing.push(fileName);
+      }
+    }
+    if (missing.length > 0) throw new DeskError(missingUploadMessage(missing), { status: 400 });
+    const sets = await readLabelSets(dataDir);
+    const customerIds = await customerIdsIn(dataDir);
+    return await payloadFromRun(dataDir, filename, customerIds, new Map(), sets.labels, sets.heldOutLabels);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+function extractZip(zipPath: string, dest: string): Promise<void> {
+  const allowed = [...DEV_PACK_FILES, PRACTICE_LABEL_FILE, ...HELD_OUT_LABEL_FILES].join(",");
+  return new Promise((resolve, reject) => {
+    const child = spawn("python3", ["-c", ZIP_SCRIPT, zipPath, dest, allowed]);
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      reject(new DeskError("The zip could not be opened.", { status: 400, detail: error.message }));
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      if (code === 3) {
+        reject(new DeskError("The unzipped screening files are larger than 32 MB.", { status: 413 }));
+        return;
+      }
+      reject(
+        new DeskError("The zip could not be read.", {
+          status: 400,
+          detail: stderr.trim().slice(0, 500) || `unzip exited with status ${code}.`,
+        }),
+      );
+    });
+  });
+}
+
+async function customerIdsIn(dir: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let text = "";
+  try {
+    text = await readFile(path.join(dir, "customers.jsonl"), "utf8");
+  } catch {
+    return ids;
+  }
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as { record_id?: unknown };
+      if (typeof row.record_id === "string" && row.record_id.trim()) ids.add(row.record_id.trim());
+    } catch {
+      continue;
+    }
+  }
+  return ids;
+}
+
+function isScreeningDocument(text: string, extension: "json" | "jsonl"): boolean {
+  try {
+    const parsed = parseJsonDocument(text, extension);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const record = parsed as Record<string, unknown>;
+    return DEV_PACK_FILES.some((fileName) => {
+      const key = SCREENING_KEYS[fileName];
+      return key !== "hits" && key in record;
+    });
+  } catch {
+    return false;
+  }
+}
+
+function labelsInText(
+  text: string,
+  extension: "csv" | "json" | "jsonl",
+): { labels: PracticeLabel[]; heldOutLabels: PracticeLabel[] | null } {
+  if (extension === "csv") return { labels: [], heldOutLabels: null };
+  try {
+    const parsed = parseJsonDocument(text, extension);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { labels: [], heldOutLabels: null };
+    return labelSetsFromRecord(parsed as Record<string, unknown>);
+  } catch {
+    return { labels: [], heldOutLabels: null };
+  }
+}
+
+function labelSetsFromRecord(record: Record<string, unknown>): {
+  labels: PracticeLabel[];
+  heldOutLabels: PracticeLabel[] | null;
+} {
+  const practice = labelsFromRows(record.practice_labels);
+  const plain = labelsFromRows(record.labels);
+  const heldOut = HELD_OUT_LABEL_FILES.map((name) => labelsFromRows(record[name.replace(/\.jsonl$/, "")])).find(
+    (rows) => rows.length > 0,
+  );
+  if (practice.length > 0 && heldOut && heldOut.length > 0) return { labels: practice, heldOutLabels: heldOut };
+  if (practice.length > 0) return { labels: practice, heldOutLabels: null };
+  if (plain.length > 0 && heldOut && heldOut.length > 0) return { labels: plain, heldOutLabels: heldOut };
+  if (heldOut && heldOut.length > 0) return { labels: heldOut, heldOutLabels: null };
+  if (plain.length > 0) return { labels: plain, heldOutLabels: null };
+  return { labels: [], heldOutLabels: null };
 }
 
 function requireCustomerIds(rows: Record<string, unknown>[]): Record<string, unknown>[] {

@@ -38,7 +38,7 @@ export function DeskFrame({
         </div>
         <p className="mt-2 max-w-4xl text-sm leading-5 text-muted-foreground">
           A contradiction clears a hit, agreement on the required facts confirms it, and everything else stays for
-          review. Closeness, bias, and confidence are on each row. This is the development run, not a live watchlist.
+          review. The desk shows one run at a time and does not keep the customer file.
         </p>
         {notice ? (
           <p className="mt-1 max-w-4xl text-sm leading-5 text-muted-foreground" role="status">

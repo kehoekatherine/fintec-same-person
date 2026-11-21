@@ -9,10 +9,10 @@ import { CasePanel } from "@/components/case-window";
 import { DeskFrame, LoadingState } from "@/components/desk-frame";
 import { QueueSwitch } from "@/components/queue-switch";
 import { ResultsTable } from "@/components/results-table";
+import { RunMetricsLine } from "@/components/run-metrics";
 import { UploadControl } from "@/components/upload-control";
 import { explainRow } from "@/lib/explanation";
-import { isDecision } from "@/lib/resolutions";
-import type { DeskFailure, FilterId, PracticeLabel, QueueId, ResultPayload } from "@/lib/types";
+import type { DeskFailure, FilterId, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
 
 export function Desk() {
@@ -28,7 +28,7 @@ export function Desk() {
     else setQueue("dev");
   }
   const [dev, setDev] = useState<ResultPayload | null>(null);
-  const [devStatus, setDevStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [devStatus, setDevStatus] = useState<"loading" | "ready" | "empty" | "error">("loading");
   const [devError, setDevError] = useState<DeskFailure | null>(null);
   const [devQuery, setDevQuery] = useState("");
   const [devFilter, setDevFilter] = useState<FilterId>("all");
@@ -54,7 +54,7 @@ export function Desk() {
     return row
       ? explainRow(
           row,
-          "These are the evidence ids the resolver wrote. The customer, account, notes, checks, and hit are read from the development folder.",
+          "These are the evidence ids the resolver wrote. The customer, account, notes, checks, and hit are read from this dataset's folder.",
         )
       : null;
   }, [dev, hitParam, queue, upload]);
@@ -91,11 +91,14 @@ export function Desk() {
     setDevStatus("loading");
     setDevError(null);
     try {
-      const [response, labels] = await Promise.all([
-        fetch("/api/development", { cache: "no-store" }),
-        fetchPracticeLabels(),
-      ]);
+      const response = await fetch("/api/development", { cache: "no-store" });
       const body = (await response.json()) as ResultPayload & DeskFailure;
+      if (response.status === 404) {
+        setDev(null);
+        setDevStatus("empty");
+        setDevError(null);
+        return;
+      }
       if (!response.ok || !body.rows) {
         setDev(null);
         setDevStatus("error");
@@ -105,7 +108,7 @@ export function Desk() {
         });
         return;
       }
-      setDev(withLabels(body, labels));
+      setDev(body);
       setDevStatus("ready");
     } catch {
       setDev(null);
@@ -118,12 +121,15 @@ export function Desk() {
     let cancelled = false;
     void (async () => {
       try {
-        const [response, labels] = await Promise.all([
-          fetch("/api/development", { cache: "no-store" }),
-          fetchPracticeLabels(),
-        ]);
+        const response = await fetch("/api/development", { cache: "no-store" });
         const body = (await response.json()) as ResultPayload & DeskFailure;
         if (cancelled) return;
+        if (response.status === 404) {
+          setDev(null);
+          setDevStatus("empty");
+          setDevError(null);
+          return;
+        }
         if (!response.ok || !body.rows) {
           setDev(null);
           setDevStatus("error");
@@ -133,7 +139,7 @@ export function Desk() {
           });
           return;
         }
-        setDev(withLabels(body, labels));
+        setDev(body);
         setDevStatus("ready");
       } catch {
         if (cancelled) return;
@@ -231,22 +237,24 @@ export function Desk() {
       ) : null}
 
       {queue === "upload" && upload ? (
-        <ResultsTable
-          rows={upload.rows}
-          query={uploadQuery}
-          filter={uploadFilter}
-          activeHitId={queue === "upload" ? hitParam : null}
-          detail={queue === "upload" ? caseDetail : null}
-          onQuery={setUploadQuery}
-          onFilter={setUploadFilter}
-          onOpen={(row) => applyParams({ hit: hitParam === row.hitId ? null : row.hitId })}
-          onReset={() => {
-            setUploadQuery("");
-            setUploadFilter("all");
-          }}
-          caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
-          labels={upload.labels}
-        />
+        <>
+          <RunMetricsLine rows={upload.rows} labels={upload.labels} heldOutLabels={upload.heldOutLabels} />
+          <ResultsTable
+            rows={upload.rows}
+            query={uploadQuery}
+            filter={uploadFilter}
+            activeHitId={queue === "upload" ? hitParam : null}
+            detail={queue === "upload" ? caseDetail : null}
+            onQuery={setUploadQuery}
+            onFilter={setUploadFilter}
+            onOpen={(row) => applyParams({ hit: hitParam === row.hitId ? null : row.hitId })}
+            onReset={() => {
+              setUploadQuery("");
+              setUploadFilter("all");
+            }}
+            caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
+          />
+        </>
       ) : null}
     </DeskFrame>
   );
@@ -266,7 +274,7 @@ function DevQueue({
   onReset,
   onRetry,
 }: {
-  status: "loading" | "ready" | "error";
+  status: "loading" | "ready" | "empty" | "error";
   error: DeskFailure | null;
   payload: ResultPayload | null;
   query: string;
@@ -280,6 +288,17 @@ function DevQueue({
   onRetry: () => void;
 }) {
   if (status === "loading") return <LoadingState mode="table" />;
+  if (status === "empty") {
+    return (
+      <div data-testid="empty" className="border border-border bg-card px-4 py-6">
+        <h2 className="font-heading text-xl">Add a dataset</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+          No dataset is loaded. Add a zip of the screening files, or one JSON bundle that contains them. The desk does
+          not include a built-in dataset.
+        </p>
+      </div>
+    );
+  }
   if (status === "error") {
     return (
       <Failure
@@ -293,53 +312,28 @@ function DevQueue({
   if (!payload || payload.rows.length === 0) {
     return (
       <div data-testid="empty" className="border border-border bg-card px-4 py-6">
-        <h2 className="font-heading text-xl">The development run has no hits</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          output/dev.jsonl did not contain a screening result.
-        </p>
+        <h2 className="font-heading text-xl">This dataset has no hits</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">The folder did not contain a screening hit.</p>
       </div>
     );
   }
   return (
-    <ResultsTable
-      rows={payload.rows}
-      query={query}
-      filter={filter}
-      activeHitId={activeHitId}
-      detail={detail}
-      onQuery={onQuery}
-      onFilter={onFilter}
-      onOpen={onOpen}
-      onReset={onReset}
-      caption="Development screening results"
-      labels={payload.labels}
-    />
+    <>
+      <RunMetricsLine rows={payload.rows} labels={payload.labels} heldOutLabels={payload.heldOutLabels} />
+      <ResultsTable
+        rows={payload.rows}
+        query={query}
+        filter={filter}
+        activeHitId={activeHitId}
+        detail={detail}
+        onQuery={onQuery}
+        onFilter={onFilter}
+        onOpen={onOpen}
+        onReset={onReset}
+        caption={payload.datasetName ?? "Dataset found on this machine"}
+      />
+    </>
   );
-}
-
-function withLabels(payload: ResultPayload, labels: PracticeLabel[] | null): ResultPayload {
-  if (!labels || labels.length === 0) return payload;
-  return { ...payload, labels };
-}
-
-async function fetchPracticeLabels(): Promise<PracticeLabel[] | null> {
-  try {
-    const response = await fetch("/api/development/labels", { cache: "no-store" });
-    if (!response.ok) return null;
-    const body = (await response.json()) as { labels?: unknown };
-    if (!Array.isArray(body.labels)) return null;
-    const labels: PracticeLabel[] = [];
-    for (const item of body.labels) {
-      if (!item || typeof item !== "object") continue;
-      const record = item as { hitId?: unknown; decision?: unknown };
-      if (typeof record.hitId !== "string" || !record.hitId || typeof record.decision !== "string") continue;
-      if (!isDecision(record.decision)) continue;
-      labels.push({ hitId: record.hitId, decision: record.decision });
-    }
-    return labels;
-  } catch {
-    return null;
-  }
 }
 
 function Failure({

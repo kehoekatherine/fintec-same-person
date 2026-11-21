@@ -25,12 +25,12 @@ export function DeskFrame({
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
-              Fictional and participant data
+              Development screening
             </p>
             <h1 className="mt-2 font-heading text-3xl tracking-tight text-foreground">Screening desk</h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-              The development run lists recorded screening decisions. The brief examples are four fictional
-              cases with their source records. This is not a live watchlist and not a regulatory filing.
+              The development queue reads the development data folder when it is on this machine. The fictional
+              brief is four example cases and stays separate. This is not a live watchlist and not a regulatory filing.
             </p>
             {notice ? (
               <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/85" role="status">

@@ -63,9 +63,9 @@ How a customer is resolved, how a hit is read, and how evidence is chosen is des
 
 ## Try it
 
-The screening desk is a Next.js app in `web/`. It shows those four fictional cases — not a live watchlist — and the decision `system/run` wrote for each one.
+The screening desk is a Next.js app in `web/`. It shows the development run and, separately, four fictional brief cases. It is not a live watchlist.
 
-The desk has light and dark mode. It lists every recorded decision in `output/dev.jsonl` and the four brief examples, with the customer, hit, notes, checks, and evidence on each brief case. Confirmed matches in the development run also show the customer and listed names from `output/confirmed-matches.csv`. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. The upload stays in the browser session and is not written into the repository.
+The desk has light and dark mode. The development queue lists `output/dev.jsonl`. When the unpacked development folder is on this machine (`SCREENING_DEV_DIR`, or `/tmp/hackathon-data/unpacked/screening/dev`), that queue re-runs `system/run` on the folder and opens customer, account, and hit fields from its `customers.jsonl`, `accounts.jsonl`, `hits.jsonl`, and `alerts.jsonl`. That folder is not in this repository. If the folder is absent, confirmed matches fall back to the names in `output/confirmed-matches.csv`. The four brief examples stay a separate fictional queue. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. A hits-only file is joined to the development `customers.jsonl` and the desk does not invent customer ids. The upload stays in the browser session and is not written into the repository.
 
 ```sh
 cd web

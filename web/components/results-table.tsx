@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ export function ResultsTable({
   onReset,
   caption,
   detailNote,
+  renderDetail,
 }: {
   rows: ResultRow[];
   query: string;
@@ -33,6 +34,7 @@ export function ResultsTable({
   onReset: () => void;
   caption: string;
   detailNote: string;
+  renderDetail?: (row: ResultRow) => ReactNode;
 }) {
   const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
   const keyed = useMemo(
@@ -155,9 +157,7 @@ export function ResultsTable({
                     <TableCell className="font-mono text-xs">{item.row.hitId}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.alertId || "Not given"}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.reasonCode || "Not given"}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {item.row.customerRecordId ?? "Not resolved"}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs">{customerLabel(item.row)}</TableCell>
                     <TableCell className="max-w-md text-muted-foreground">
                       <span className="line-clamp-2">{item.row.reason || "No reason recorded."}</span>
                     </TableCell>
@@ -195,7 +195,12 @@ export function ResultsTable({
           </p>
         </div>
       ) : null}
-      {selected ? <ResultDetail row={selected} note={detailNote} /> : null}
+      {selected ? (
+        <div className="grid gap-3">
+          <ResultDetail row={selected} note={detailNote} />
+          {renderDetail ? renderDetail(selected) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -215,7 +220,7 @@ function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
       {row.reasonCode ? <p className="mt-1 text-sm text-muted-foreground">{reasonLabel(row.reasonCode)}</p> : null}
       <p className="mt-2 font-mono text-xs text-muted-foreground">
         {row.hitId}
-        {row.alertId ? ` · ${row.alertId}` : ""} · Customer {row.customerRecordId ?? "not resolved"}
+        {row.alertId ? ` · ${row.alertId}` : ""} · {customerLabel(row)}
       </p>
       {row.listedName || row.customerDob || row.customerCountry ? (
         <p className="mt-2 text-sm leading-6 text-foreground">
@@ -248,6 +253,13 @@ function ResultDetail({ row, note }: { row: ResultRow; note: string }) {
       </div>
     </article>
   );
+}
+
+function customerLabel(row: ResultRow): string {
+  if (!row.customerRecordId) return "Not resolved";
+  if (row.customerRecordId === "AMBIGUOUS") return "AMBIGUOUS";
+  if (row.customerInFile === false) return `${row.customerRecordId} is not in customers.jsonl`;
+  return row.customerRecordId;
 }
 
 function EmptyResults({ query, onReset }: { query: string; onReset: () => void }) {

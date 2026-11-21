@@ -25,6 +25,25 @@ export type EvidenceRecord = {
   note?: string | null;
 };
 
+export type SourcedRecord = {
+  id: string;
+  kind: string;
+  file: string;
+  present: boolean;
+  message: string | null;
+  fields: FieldRow[];
+};
+
+export type OpenedRecord = {
+  hitId: string | null;
+  alertId: string | null;
+  customerRecordId: string | null;
+  customer: SourcedRecord | null;
+  accounts: SourcedRecord[];
+  hit: SourcedRecord | null;
+  alert: SourcedRecord | null;
+};
+
 export type ScreenedCustomer = {
   name: string;
   entityType: string | null;
@@ -56,6 +75,7 @@ export type DeskCase = {
   hit: WatchlistHit;
   resolution: Resolution;
   evidence: EvidenceRecord[];
+  customerNote: string;
 };
 
 export type DeskPayload = {
@@ -73,6 +93,8 @@ export type ResultRow = {
   decision: Decision;
   reasonCode: string;
   customerRecordId: string | null;
+  /** True when this id is a row in the development customers.jsonl. False when that file was checked and the id is absent. */
+  customerInFile: boolean | null;
   reason: string;
   evidence: string[];
   name: string | null;

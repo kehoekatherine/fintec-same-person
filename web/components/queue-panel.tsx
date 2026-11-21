@@ -98,7 +98,7 @@ export function QueuePanel({
                         {item.resolution.reason_code}
                       </span>
                       <span className="font-mono text-xs text-muted-foreground">
-                        {item.resolution.customer_record_id ?? "No customer record"}
+                        Fixture {item.resolution.customer_record_id ?? "no customer record"}
                       </span>
                     </span>
                   </Button>

@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CaseView } from "@/components/case-view";
+import { DevRecord } from "@/components/dev-record";
 import { DeskFrame, LoadingState } from "@/components/desk-frame";
 import { QueuePanel } from "@/components/queue-panel";
 import { QueueSwitch } from "@/components/queue-switch";
@@ -362,9 +363,12 @@ export function Desk() {
           caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
           detailNote={
             upload.mode === "recorded"
-              ? "These evidence ids were recorded in the uploaded file."
-              : "These evidence ids are the records in the uploaded file that decided the hit."
+              ? "These evidence ids were recorded in the uploaded file. Customer ids are checked against the development customers.jsonl."
+              : "Customer ids come from the development customers.jsonl when the file contained hits only. An id that is not in that file is not opened as a customer."
           }
+          renderDetail={(row) => (
+            <DevRecord hitId={row.hitId} alertId={row.alertId} customerRecordId={row.customerRecordId} />
+          )}
         />
       ) : null}
     </DeskFrame>
@@ -422,7 +426,10 @@ function DevQueue({
       onFilter={onFilter}
       onReset={onReset}
       caption="Development screening results"
-      detailNote="Confirmed rows include the customer and listed names from output/confirmed-matches.csv. The development run does not include the customer files. These are the evidence ids the resolver wrote."
+      detailNote="Open a row to read the customer, account, and hit from the development folder. An id that is not in customers.jsonl is not opened as a customer."
+      renderDetail={(row) => (
+        <DevRecord hitId={row.hitId} alertId={row.alertId} customerRecordId={row.customerRecordId} />
+      )}
     />
   );
 }

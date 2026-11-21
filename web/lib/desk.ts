@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
+import { loadPackIndex, type PackIndex } from "@/lib/pack-index";
 import { parseResolutions } from "@/lib/resolutions";
 import type {
   DeskCase,
@@ -111,20 +112,21 @@ type Row = Record<string, unknown>;
 
 export async function loadDesk(options: { allowSnapshot: boolean }): Promise<DeskPayload> {
   await assertFixtureStaysInApp();
-  const world = await readWorld();
+  const [world, pack] = await Promise.all([readWorld(), loadPackIndex().catch(() => null)]);
   try {
     const rows = await runEngine();
-    return assemble(world, rows, {
+    return assemble(world, rows, pack, {
       source: "engine",
-      notice: "These decisions were just written by system/run on the fictional brief fixture.",
+      notice:
+        "Fictional brief. These four cases were just written by system/run on the brief fixture. They are not the development run, and their customer ids are not rows in the development customers.jsonl.",
     });
   } catch (error) {
     if (error instanceof DeskError && error.code === "missing" && options.allowSnapshot) {
       const rows = await readSnapshot();
-      return assemble(world, rows, {
+      return assemble(world, rows, pack, {
         source: "snapshot",
         notice:
-          "Showing the recorded output of system/run. This deployment does not include the Python resolver. Re-run will report that.",
+          "Fictional brief. These four recorded cases are not the development run. Their customer ids are not rows in the development customers.jsonl.",
       });
     }
     throw error;
@@ -176,6 +178,7 @@ async function readWorld(): Promise<Map<string, Row[]>> {
 function assemble(
   world: Map<string, Row[]>,
   resolutions: Resolution[],
+  pack: PackIndex | null,
   meta: { source: DeskPayload["source"]; notice: string },
 ): DeskPayload {
   const alerts = new Map<string, Row>();
@@ -198,7 +201,8 @@ function assemble(
       screened: screenedFrom(alert),
       hit: hitFrom(hit),
       resolution,
-      evidence: resolution.evidence.map((id) => evidenceFrom(id, indexed.get(id))),
+      evidence: resolution.evidence.map((id) => evidenceFrom(id, indexed.get(id), pack)),
+      customerNote: briefCustomerNote(resolution.customer_record_id, pack),
     };
   });
   return {
@@ -252,21 +256,39 @@ function hitFrom(hit: Row | undefined): WatchlistHit {
 function evidenceFrom(
   id: string,
   found: { kind: string; file: string; row: Row } | undefined,
+  pack: PackIndex | null,
 ): EvidenceRecord {
   if (!found) {
     return {
       id,
       kind: "Missing record",
-      file: "not in the fixture",
-      fields: [{ label: "Id", value: `${id} is cited, but the fixture has no record with that id.` }],
+      file: "not in the fictional brief",
+      note: null,
+      fields: [{ label: "Id", value: `${id} is cited, but the fictional brief has no record with that id.` }],
     };
   }
+  const customer = found.kind === "Customer record";
   return {
     id,
-    kind: found.kind,
-    file: found.file,
-    fields: fieldsOf(found.row, found.kind === "Customer record"),
+    kind: customer ? "Fictional customer" : found.kind,
+    file: `fictional brief / ${found.file}`,
+    note: customer ? briefCustomerNote(id, pack) : null,
+    fields: fieldsOf(found.row, customer),
   };
+}
+
+function briefCustomerNote(id: string | null, pack: PackIndex | null): string {
+  const fictional = "Fictional brief record.";
+  if (!id || id === "AMBIGUOUS") {
+    return `${fictional} This case is not part of the development run.`;
+  }
+  if (pack && !pack.customers.has(id)) {
+    return `${id} is not in customers.jsonl. ${fictional} It is not a development customer.`;
+  }
+  if (pack) {
+    return `${fictional} The fields on this case are from the brief fixture, not the development customers.jsonl.`;
+  }
+  return `${fictional} The development customers.jsonl is not on this machine, so this id is not opened as a development customer.`;
 }
 
 function fieldsOf(row: Row, customer: boolean): FieldRow[] {

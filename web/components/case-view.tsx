@@ -70,7 +70,10 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
         <p className="mt-2 text-sm text-foreground">{reasonLabel(resolution.reason_code)}</p>
         <p className="mt-1 text-sm text-muted-foreground">{DECISION_MEANING[resolution.decision]}</p>
         <p className="mt-3 font-mono text-xs text-muted-foreground">
-          Customer {resolution.customer_record_id ?? "not resolved"}
+          {resolution.customer_record_id ?? "No customer record"}
+        </p>
+        <p className="mt-1 text-sm leading-6 text-foreground" data-testid="customer-note">
+          {item.customerNote}
         </p>
       </div>
 
@@ -139,7 +142,7 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
         <div>
           <h3 className="font-heading text-2xl">Records that decided it</h3>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            The resolver cites only the fixture records that decided the hit.
+            These are fictional brief records. They are not looked up in the development customers.jsonl.
           </p>
         </div>
         {item.evidence.length === 0 ? (
@@ -154,6 +157,7 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
                 <CardTitle className="font-mono text-base">{record.id}</CardTitle>
               </CardHeader>
               <CardContent>
+                {record.note ? <p className="mb-3 text-sm leading-6 text-foreground">{record.note}</p> : null}
                 <FactList rows={record.fields.map((field) => [field.label, field.value] as const)} />
               </CardContent>
             </Card>

@@ -42,7 +42,8 @@ export function UploadControl({
       </div>
       <p className="mt-2 text-sm leading-6 text-muted-foreground" data-testid="upload-hint">
         Expected CSV columns: hit_id, alert_id, name, entity_type, dob, country, city, aliases. JSON may be an
-        array of hits, JSONL, or an object with hits.
+        array of hits, JSONL, or an object with hits. A hits-only file is scored against the development
+        customers.jsonl. Customer ids are not invented.
       </p>
       {error ? (
         <Alert variant="destructive" className="mt-3" data-testid="upload-error">

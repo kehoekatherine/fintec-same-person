@@ -5,7 +5,10 @@ export function filterResults(rows: ResultRow[], query: string, filter: FilterId
   const needle = query.trim().toLowerCase();
   const searched = needle
     ? rows.filter((row) =>
-        [row.hitId, row.name, row.listedName, row.reasonCode, row.reason].join("\n").toLowerCase().includes(needle),
+        [row.hitId, row.alertId, row.customerRecordId, row.name, row.listedName, row.reasonCode, row.reason]
+          .join("\n")
+          .toLowerCase()
+          .includes(needle),
       )
     : rows;
   const counts: Record<FilterId, number> = {

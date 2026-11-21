@@ -3,6 +3,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 
 import { BiasRiskPanel } from "@/components/bias-risk-panel";
+import { ClosenessScore, ComparisonTable } from "@/components/case-assessment";
 import { DevRecord } from "@/components/dev-record";
 import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +98,9 @@ function ExplanationBody({ item }: { item: Explanation }) {
         ) : null}
         {item.customerNote ? <p className="mt-2 text-sm leading-6 text-foreground">{item.customerNote}</p> : null}
       </div>
+
+      {item.comparison ? <ComparisonTable comparison={item.comparison} /> : null}
+      {item.closeness ? <ClosenessScore closeness={item.closeness} /> : null}
 
       <section aria-label="Reason codes" className="grid gap-2" data-testid="case-grounds">
         <h3 className="font-heading text-2xl text-foreground">Reason codes</h3>

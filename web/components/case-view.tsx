@@ -1,12 +1,9 @@
 import { ArrowLeft } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
-import { blank, formatWhen, sentences } from "@/lib/format";
-import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
+import { CaseAssessment } from "@/components/case-assessment";
+import { blank, formatWhen } from "@/lib/format";
 import type { DeskCase } from "@/lib/types";
 import { cn } from "cn";
 
@@ -42,7 +39,6 @@ function CasePlaceholder() {
 
 function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
   const { resolution } = item;
-  const lines = sentences(resolution.reason);
   return (
     <article data-testid="case-view" className="grid gap-4">
       <div className="flex items-start justify-between gap-3">
@@ -52,6 +48,12 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
           </p>
           <h2 className="mt-1 font-heading text-3xl leading-tight tracking-tight">{item.screened.name}</h2>
           <p className="mt-1 text-base text-muted-foreground">against {item.hit.name}</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {resolution.customer_record_id ?? "No customer record"}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-foreground" data-testid="customer-note">
+            {item.customerNote}
+          </p>
         </div>
         <Button type="button" variant="outline" className="h-10 shrink-0 px-3 lg:hidden" onClick={onBack}>
           <ArrowLeft />
@@ -59,31 +61,40 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
         </Button>
       </div>
 
-      <div className={cn("border-y border-r border-l-4 border-border bg-card px-5 py-5", DECISION_RULE[resolution.decision])}>
-        <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Decision</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <p className="font-heading text-3xl text-foreground">{DECISION_LABEL[resolution.decision]}</p>
-          <Badge variant="outline" className={cn("h-6 font-mono", DECISION_BADGE[resolution.decision])}>
-            {resolution.reason_code}
-          </Badge>
-        </div>
-        <p className="mt-2 text-sm text-foreground">{reasonLabel(resolution.reason_code)}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{DECISION_MEANING[resolution.decision]}</p>
-        <p className="mt-3 font-mono text-xs text-muted-foreground">
-          {resolution.customer_record_id ?? "No customer record"}
-        </p>
-        <p className="mt-1 text-sm leading-6 text-foreground" data-testid="customer-note">
-          {item.customerNote}
-        </p>
-      </div>
-
-      <div className="grid gap-3">
-        {lines.map((line) => (
-          <p key={line} className="text-base leading-7 text-foreground">
-            {line}
-          </p>
-        ))}
-      </div>
+      <CaseAssessment
+        decision={resolution.decision}
+        reasonCode={resolution.reason_code}
+        reason={resolution.reason}
+        comparison={resolution.comparison}
+        closeness={resolution.closeness}
+      >
+        <section aria-label="Data sources" className="grid gap-3">
+          <div>
+            <h3 className="font-heading text-2xl">Data sources</h3>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              These are fictional brief records. They are not looked up in the development customers.jsonl.
+            </p>
+          </div>
+          {item.evidence.length === 0 ? (
+            <p className="text-sm text-muted-foreground">The resolver cited no record ids.</p>
+          ) : (
+            item.evidence.map((record) => (
+              <Card key={record.id} className="bg-card" data-testid={`evidence-${record.id}`}>
+                <CardHeader>
+                  <CardDescription>
+                    {record.kind} · {record.file}
+                  </CardDescription>
+                  <CardTitle className="font-mono text-base">{record.id}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {record.note ? <p className="mb-3 text-sm leading-6 text-foreground">{record.note}</p> : null}
+                  <FactList rows={record.fields.map((field) => [field.label, field.value] as const)} />
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </section>
+      </CaseAssessment>
 
       <div className="grid gap-3 md:grid-cols-2">
         <Card className="bg-card">
@@ -136,34 +147,6 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
         </Card>
       </div>
 
-      <Separator />
-
-      <section aria-label="Evidence" className="grid gap-3">
-        <div>
-          <h3 className="font-heading text-2xl">Records that decided it</h3>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            These are fictional brief records. They are not looked up in the development customers.jsonl.
-          </p>
-        </div>
-        {item.evidence.length === 0 ? (
-          <p className="text-sm text-muted-foreground">The resolver cited no record ids.</p>
-        ) : (
-          item.evidence.map((record) => (
-            <Card key={record.id} className="bg-card" data-testid={`evidence-${record.id}`}>
-              <CardHeader>
-                <CardDescription>
-                  {record.kind} · {record.file}
-                </CardDescription>
-                <CardTitle className="font-mono text-base">{record.id}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {record.note ? <p className="mb-3 text-sm leading-6 text-foreground">{record.note}</p> : null}
-                <FactList rows={record.fields.map((field) => [field.label, field.value] as const)} />
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </section>
     </article>
   );
 }

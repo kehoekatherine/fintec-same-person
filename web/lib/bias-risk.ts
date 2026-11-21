@@ -183,6 +183,8 @@ export function biasRiskForExplanation(item: Explanation): BiasRisk | null {
     groundsChecked: item.groundsChecked,
     applicableCodes: item.applicableCodes,
     customerMissing: item.customerMissing,
+    comparison: item.comparison,
+    closeness: item.closeness,
   });
 }
 

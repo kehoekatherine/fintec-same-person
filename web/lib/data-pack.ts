@@ -1,6 +1,8 @@
 import { access, realpath } from "node:fs/promises";
 import path from "node:path";
 
+export const MISSING_DATA_FOLDER = "The data folder is not on this machine.";
+
 /** Files system/run reads from a development folder. */
 export const DEV_PACK_FILES = [
   "customers.jsonl",

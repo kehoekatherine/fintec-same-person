@@ -13,13 +13,13 @@ For every hit it:
 3. Reads who the listed person is. Dates and countries come from the hit's own fields, from an age stated in the first paragraph of the profile, or from a web-search snippet that is actually about that hit.
 4. Compares them. A contradiction clears the hit. Agreement on the required facts confirms it. Anything else stays a review. Clearing a true match is the expensive mistake, so doubt stays with a reviewer.
 
-The scored entrypoint is `system/run`. The screening desk in `web/` shows four fictional examples from the public brief. From the repository root:
+The scored entrypoint is `system/run`. The screening desk in `web/` opens the development run and the practice-label hits from a local data folder. From the repository root:
 
 ```sh
 cd web && npm install && npm run dev
 ```
 
-The dev server listens on port 4317. See [Try it](#try-it) for the desk and the fixture command.
+The dev server listens on port 4317. See [Try it](#try-it) for the desk.
 
 ## AI tools
 
@@ -97,15 +97,15 @@ Score the development predictions with the checker shipped in the data pack:
 python3 validate.py --data <data folder> --output output/dev.jsonl --score <data folder>/practice_labels.jsonl
 ```
 
-`output/dev.jsonl` is the development run. The development customer and watchlist files are not in this repository. A small fictional fixture, built only from the four examples in the public brief, lives in `web/fixtures/brief`.
+`output/dev.jsonl` is the development run. The development customer and watchlist files are not in this repository. The desk reads them at runtime from `SCREENING_DEV_DIR`, or from `/tmp/hackathon-data/unpacked/screening/dev` when that folder is on the machine.
 
 How a customer is resolved, how a hit is read, and how evidence is chosen is described in [system/README.md](system/README.md).
 
 ## Try it
 
-The screening desk is a Next.js app in `web/`. It shows the development run and, separately, four fictional brief cases. It is not a live watchlist.
+The screening desk is a Next.js app in `web/`. It shows the full development run and, separately, the practice-label hits as openable examples. It is not a live watchlist.
 
-The desk has light and dark mode. The development queue lists `output/dev.jsonl`. When the unpacked development folder is on this machine (`SCREENING_DEV_DIR`, or `/tmp/hackathon-data/unpacked/screening/dev`), that queue re-runs `system/run` on the folder and opens customer, account, and hit fields from its `customers.jsonl`, `accounts.jsonl`, `hits.jsonl`, and `alerts.jsonl`. That folder is not in this repository. If the folder is absent, confirmed matches fall back to the names in `output/confirmed-matches.csv`. The four brief examples stay a separate fictional queue. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. A hits-only file is joined to the development `customers.jsonl` and the desk does not invent customer ids. The upload stays in the browser session and is not written into the repository.
+The desk has light and dark mode. Both queues read the unpacked development folder when it is on this machine (`SCREENING_DEV_DIR`, or `/tmp/hackathon-data/unpacked/screening/dev`). That folder is not in this repository. The development queue re-runs `system/run` on the folder and opens customer, account, hit, and alert fields from its `customers.jsonl`, `accounts.jsonl`, `hits.jsonl`, and `alerts.jsonl`. The practice examples are the hits in `practice_labels.jsonl`, joined to those files plus `notes.jsonl` and `kyc_checks.jsonl`. If the folder is absent, the desk says the data folder is not on this machine. It does not substitute invented records. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. A hits-only file is joined to the development `customers.jsonl` and the desk does not invent customer ids. The upload stays in the browser session and is not written into the repository.
 
 ```sh
 cd web
@@ -115,10 +115,4 @@ npm run dev
 
 The dev server listens on port 4317. Open http://127.0.0.1:4317
 
-`system/run` is unchanged. It still uses only the Python standard library, reads a data folder, and writes one JSON line per hit:
-
-```sh
-system/run "$(pwd)/web/fixtures/brief" "$(pwd)/output/brief.jsonl"
-```
-
-Pass absolute paths. The `system/run` script changes into `system/` before it reads the folder, so a path relative to the repository root would miss the fixture. The desk can re-run that same command on the fictional fixture from the page.
+`system/run` is unchanged. It still uses only the Python standard library, reads a data folder, and writes one JSON line per hit. Pass absolute paths. The `system/run` script changes into `system/` before it reads the folder. The practice-examples queue can re-run that command on the development data folder from the page.

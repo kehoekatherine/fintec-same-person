@@ -66,6 +66,8 @@ export type OpenedRecord = {
   customerRecordId: string | null;
   customer: SourcedRecord | null;
   accounts: SourcedRecord[];
+  notes: SourcedRecord[];
+  checks: SourcedRecord[];
   hit: SourcedRecord | null;
   alert: SourcedRecord | null;
 };
@@ -114,7 +116,7 @@ export type DeskPayload = {
   cases: DeskCase[];
 };
 
-export type QueueId = "dev" | "brief" | "upload";
+export type QueueId = "dev" | "examples" | "upload";
 
 export type ResultRow = {
   hitId: string;

@@ -65,6 +65,12 @@ export function DevRecord({
       {record.accounts.map((account) => (
         <RecordCard key={account.id} record={account} testId={`account-${account.id}`} />
       ))}
+      {record.notes.map((note) => (
+        <RecordCard key={note.id} record={note} testId={`note-${note.id}`} />
+      ))}
+      {record.checks.map((check) => (
+        <RecordCard key={check.id} record={check} testId={`check-${check.id}`} />
+      ))}
       <RecordCard record={record.hit} testId="hit-record" />
       <RecordCard record={record.alert} testId="alert-record" />
     </div>

@@ -1,7 +1,9 @@
 import { connection } from "next/server";
 import { NextResponse } from "next/server";
 
-import { DeskError, loadDesk } from "@/lib/desk";
+import { clearDevelopmentRun } from "@/lib/dev-run";
+import { DeskError } from "@/lib/errors";
+import { loadExamples } from "@/lib/examples";
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : "The resolver failed.";
@@ -13,7 +15,7 @@ function failure(error: unknown) {
 export async function GET() {
   await connection();
   try {
-    return NextResponse.json(await loadDesk({ allowSnapshot: true }));
+    return NextResponse.json(await loadExamples());
   } catch (error) {
     return failure(error);
   }
@@ -25,14 +27,14 @@ export async function POST(request: Request) {
   if (text.trim()) {
     return NextResponse.json(
       {
-        error:
-          "This desk only re-runs the fictional brief fixture. It does not accept a data folder or an upload.",
+        error: "This desk re-runs the development data folder. It does not accept an upload here.",
       },
       { status: 400 },
     );
   }
+  clearDevelopmentRun();
   try {
-    return NextResponse.json(await loadDesk({ allowSnapshot: false }));
+    return NextResponse.json(await loadExamples());
   } catch (error) {
     return failure(error);
   }

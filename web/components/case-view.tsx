@@ -29,8 +29,7 @@ function CasePlaceholder() {
       <CardHeader>
         <CardTitle className="font-heading text-2xl">Choose a hit</CardTitle>
         <CardDescription className="text-sm leading-6">
-          The queue lists every fictional case. Open one to read the screened customer, the
-          watchlist hit, and the reason the resolver wrote.
+          The queue lists the practice-label hits from the development data folder. Open one to read the screened customer, the watchlist hit, and the reason the resolver wrote.
         </CardDescription>
       </CardHeader>
     </Card>
@@ -72,7 +71,7 @@ function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
           <div>
             <h3 className="font-heading text-2xl">Data sources</h3>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              These are fictional brief records. They are not looked up in the development customers.jsonl.
+              These records are read from the development data folder.
             </p>
           </div>
           {item.evidence.length === 0 ? (

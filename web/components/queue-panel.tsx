@@ -105,7 +105,7 @@ export function QueuePanel({
                         <ClosenessLine closeness={item.resolution.closeness} testId={`closeness-${item.hitId}`} />
                       ) : null}
                       <span className="font-mono text-xs text-muted-foreground">
-                        Fixture {item.resolution.customer_record_id ?? "no customer record"}
+                        {item.resolution.customer_record_id ?? "no customer record"}
                       </span>
                     </span>
                   </Button>
@@ -121,8 +121,8 @@ export function QueuePanel({
 
 function EmptyQueue({ query, onReset }: { query: string; onReset: () => void }) {
   const detail = query.trim()
-    ? `Nothing in the fixture matches “${query.trim()}” under this filter.`
-    : "No hits in the fixture fall under this filter.";
+    ? `Nothing in the practice examples matches “${query.trim()}” under this filter.`
+    : "No practice examples fall under this filter.";
   return (
     <div data-testid="empty" className="border border-border bg-card px-4 py-6">
       <h2 className="font-heading text-xl">No hits in this view</h2>

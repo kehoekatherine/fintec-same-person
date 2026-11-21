@@ -1,3 +1,4 @@
+import { MISSING_DATA_FOLDER } from "@/lib/data-pack";
 import { loadPackIndex, type PackIndex } from "@/lib/pack-index";
 import { fieldsOf, flattenAlert, stringOf, type Row } from "@/lib/record-fields";
 import type { OpenedRecord, SourcedRecord } from "@/lib/types";
@@ -19,6 +20,8 @@ export async function openDevelopmentRecord(input: {
     customerRecordId,
     customer: customerRecord(index, customerRecordId),
     accounts: accountsFor(index, customerRecordId, alertId, hitId),
+    notes: relatedNotes(index, customerRecordId),
+    checks: relatedChecks(index, customerRecordId),
     hit: hitRecord(index, hitId),
     alert: alertRecord(index, alertId, hitId),
   };
@@ -42,7 +45,7 @@ function customerRecord(index: PackIndex | null, id: string | null): SourcedReco
       kind: "Customer record",
       file: "customers.jsonl",
       present: false,
-      message: "The development customers.jsonl is not on this machine, so this id cannot be opened as a customer.",
+      message: MISSING_DATA_FOLDER,
       fields: [],
     };
   }
@@ -89,6 +92,39 @@ function alertRecord(index: PackIndex | null, alertId: string | null, hitId: str
     message: null,
     fields: fieldsOf(flattenAlert(row)),
   };
+}
+
+function relatedNotes(index: PackIndex | null, customerId: string | null): SourcedRecord[] {
+  if (!index || !customerId || customerId === "AMBIGUOUS" || !index.customers.has(customerId)) return [];
+  const email = stringOf(index.customers.get(customerId)?.email)?.toLowerCase();
+  if (!email) return [];
+  return (index.notesByEmail.get(email) ?? []).flatMap((row) => {
+    const id = stringOf(row.note_id);
+    if (!id) return [];
+    return [{ id, kind: "Note", file: "notes.jsonl", present: true, message: null, fields: fieldsOf(row) }];
+  });
+}
+
+function relatedChecks(index: PackIndex | null, customerId: string | null): SourcedRecord[] {
+  if (!index || !customerId || customerId === "AMBIGUOUS" || !index.customers.has(customerId)) return [];
+  const records: SourcedRecord[] = [];
+  const seen = new Set<string>();
+  for (const applicant of index.applicantsByCustomer.get(customerId) ?? []) {
+    for (const row of index.checksByApplicant.get(applicant) ?? []) {
+      const id = stringOf(row.check_id);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      records.push({
+        id,
+        kind: "Identity check",
+        file: "kyc_checks.jsonl",
+        present: true,
+        message: null,
+        fields: fieldsOf(row),
+      });
+    }
+  }
+  return records;
 }
 
 function accountsFor(

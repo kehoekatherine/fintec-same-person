@@ -182,9 +182,7 @@ function ExplanationBody({ item }: { item: Explanation }) {
         )}
       </section>
 
-      {item.source === "row" ? (
-        <DevRecord hitId={item.hitId} alertId={item.alertId} customerRecordId={item.customerRecordId} />
-      ) : null}
+      <DevRecord hitId={item.hitId} alertId={item.alertId} customerRecordId={item.customerRecordId} />
 
       <section aria-label="Evidence" className="grid gap-2" data-testid="sources">
         <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Evidence</h3>
@@ -197,6 +195,7 @@ function ExplanationBody({ item }: { item: Explanation }) {
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {record.kind} · {record.file}
                 </p>
+                {record.note ? <p className="mt-1 text-sm leading-6 text-foreground">{record.note}</p> : null}
                 <dl className="mt-2 grid gap-1">
                   {record.fields.map((field) => (
                     <div key={field.label} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 text-sm">

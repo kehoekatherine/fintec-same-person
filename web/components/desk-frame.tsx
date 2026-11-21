@@ -36,13 +36,19 @@ export function DeskFrame({
     <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <header className="shrink-0 border-b border-border">
         <div className="flex flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
-              Development screening
+          <div className="max-w-3xl">
+            <h1 className="font-heading text-4xl tracking-tight text-foreground sm:text-5xl">
+              Watching Screening Desk
+            </h1>
+            <div className="mt-3 h-1 w-16 bg-primary" aria-hidden />
+            <p className="mt-4 max-w-2xl text-base leading-7 text-foreground">
+              Each row compares a customer with a watchlist hit. A contradiction clears the hit, agreement on the
+              required facts confirms it, and everything else stays for a person to review. Closeness is how closely
+              the name, date of birth, and country agree. Bias is the chance that agreement is unreliable, and
+              confidence takes that bias off the closeness.
             </p>
-            <h1 className="mt-2 font-heading text-3xl tracking-tight text-foreground">Screening desk</h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-              The development run is the list on this page. This is not a live watchlist and not a regulatory filing.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              This is the development run. It is not a live watchlist and not a regulatory filing.
             </p>
             {notice ? (
               <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/85" role="status">

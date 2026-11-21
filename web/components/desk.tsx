@@ -7,13 +7,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { CasePanel } from "@/components/case-window";
 import { DeskFrame, LoadingState } from "@/components/desk-frame";
-import { QueuePanel } from "@/components/queue-panel";
 import { QueueSwitch } from "@/components/queue-switch";
 import { ResultsTable } from "@/components/results-table";
 import { UploadControl } from "@/components/upload-control";
-import { explainCase, explainRow } from "@/lib/explanation";
-import { FILTERS } from "@/lib/labels";
-import type { DeskFailure, DeskPayload, FilterId, QueueId, ResultPayload } from "@/lib/types";
+import { explainRow } from "@/lib/explanation";
+import type { DeskFailure, FilterId, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
 
 export function Desk() {
@@ -26,7 +24,6 @@ export function Desk() {
   if (seenQueueParam !== queueParam) {
     setSeenQueueParam(queueParam);
     if (queueParam === "upload") setQueue((current) => (current === "upload" ? current : "dev"));
-    else if (queueParam === "examples") setQueue("examples");
     else setQueue("dev");
   }
   const [dev, setDev] = useState<ResultPayload | null>(null);
@@ -34,11 +31,6 @@ export function Desk() {
   const [devError, setDevError] = useState<DeskFailure | null>(null);
   const [devQuery, setDevQuery] = useState("");
   const [devFilter, setDevFilter] = useState<FilterId>("all");
-  const [examples, setExamples] = useState<DeskPayload | null>(null);
-  const [examplesStatus, setExamplesStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [examplesError, setExamplesError] = useState<DeskFailure | null>(null);
-  const [examplesQuery, setExamplesQuery] = useState("");
-  const [examplesFilter, setExamplesFilter] = useState<FilterId>("all");
   const [upload, setUpload] = useState<ResultPayload | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<DeskFailure | null>(null);
@@ -47,10 +39,6 @@ export function Desk() {
   const hitParam = searchParams.get("hit");
   const explanation = useMemo(() => {
     if (!hitParam) return null;
-    if (queue === "examples") {
-      const item = examples?.cases.find((entry) => entry.hitId === hitParam);
-      return item ? explainCase(item) : null;
-    }
     if (queue === "upload") {
       const row = upload?.rows.find((entry) => entry.hitId === hitParam);
       if (!row || !upload) return null;
@@ -68,7 +56,7 @@ export function Desk() {
           "These are the evidence ids the resolver wrote. The customer, account, notes, checks, and hit are read from the development folder.",
         )
       : null;
-  }, [dev, examples, hitParam, queue, upload]);
+  }, [dev, hitParam, queue, upload]);
 
   const applyParams = useCallback(
     (next: Record<string, string | null>) => {
@@ -93,14 +81,10 @@ export function Desk() {
       applyParams({ hit: null });
       return;
     }
-    if (queue === "examples" && examplesStatus === "ready" && !examples?.cases.some((item) => item.hitId === hitParam)) {
-      applyParams({ hit: null });
-      return;
-    }
     if (queue === "upload" && upload && !upload.rows.some((row) => row.hitId === hitParam)) {
       applyParams({ hit: null });
     }
-  }, [applyParams, dev, devStatus, examples, examplesStatus, hitParam, queue, upload]);
+  }, [applyParams, dev, devStatus, hitParam, queue, upload]);
 
   const loadDev = useCallback(async () => {
     setDevStatus("loading");
@@ -156,60 +140,6 @@ export function Desk() {
     };
   }, []);
 
-  const loadExamples = useCallback(async () => {
-    setExamplesStatus("loading");
-    setExamplesError(null);
-    try {
-      const response = await fetch("/api/cases", { cache: "no-store" });
-      const body = (await response.json()) as DeskPayload & DeskFailure;
-      if (!response.ok || !body.cases) {
-        setExamples(null);
-        setExamplesStatus("error");
-        setExamplesError({
-          error: body.error || "The practice examples could not be read.",
-          detail: body.detail,
-        });
-        return;
-      }
-      setExamples(body);
-      setExamplesStatus("ready");
-    } catch {
-      setExamples(null);
-      setExamplesStatus("error");
-      setExamplesError({ error: "The desk could not read the practice examples." });
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch("/api/cases", { cache: "no-store" });
-        const body = (await response.json()) as DeskPayload & DeskFailure;
-        if (cancelled) return;
-        if (!response.ok || !body.cases) {
-          setExamples(null);
-          setExamplesStatus("error");
-          setExamplesError({
-            error: body.error || "The practice examples could not be read.",
-            detail: body.detail,
-          });
-          return;
-        }
-        setExamples(body);
-        setExamplesStatus("ready");
-      } catch {
-        if (cancelled) return;
-        setExamples(null);
-        setExamplesStatus("error");
-        setExamplesError({ error: "The desk could not read the practice examples." });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const openQueue = useCallback(
     (next: QueueId) => {
       if (next === "upload" && !upload) return;
@@ -257,38 +187,7 @@ export function Desk() {
     [applyParams],
   );
 
-  const examplesView = useMemo(() => {
-    const cases = examples?.cases ?? [];
-    const needle = examplesQuery.trim().toLowerCase();
-    const searched = needle
-      ? cases.filter((item) =>
-          [item.screened.name, item.hit.name, item.hitId, item.alertId, item.resolution.reason_code, item.resolution.decision]
-            .join(" ")
-            .toLowerCase()
-            .includes(needle),
-        )
-      : cases;
-    const counts = {
-      all: searched.length,
-      clear: searched.filter((item) => item.resolution.decision === "DIFFERENT_ENTITY").length,
-      confirm: searched.filter((item) => item.resolution.decision === "SAME_ENTITY").length,
-      review: searched.filter((item) => item.resolution.decision === "REVIEW").length,
-    };
-    const selected = FILTERS.find((item) => item.id === examplesFilter);
-    const filtered = selected?.decision
-      ? searched.filter((item) => item.resolution.decision === selected.decision)
-      : searched;
-    return { counts, filtered };
-  }, [examples, examplesFilter, examplesQuery]);
-
-  const notice =
-    queue === "dev" && devStatus === "ready"
-      ? dev?.notice
-      : queue === "examples" && examplesStatus === "ready"
-        ? examples?.notice
-        : queue === "upload"
-          ? upload?.notice
-          : null;
+  const notice = queue === "dev" && devStatus === "ready" ? dev?.notice : queue === "upload" ? upload?.notice : null;
 
   return (
     <DeskFrame
@@ -326,35 +225,6 @@ export function Desk() {
           }}
           onRetry={() => void loadDev()}
         />
-      ) : null}
-
-      {queue === "examples" ? (
-        examplesStatus === "loading" ? (
-          <LoadingState />
-        ) : examplesStatus === "error" ? (
-          <Failure
-            title="The practice examples did not load"
-            error={examplesError}
-            action="Try again"
-            onAction={() => void loadExamples()}
-          />
-        ) : (
-          <QueuePanel
-            cases={examplesView.filtered}
-            counts={examplesView.counts}
-            filter={examplesFilter}
-            query={examplesQuery}
-            activeId={hitParam}
-            hidden={false}
-            onFilter={setExamplesFilter}
-            onQuery={setExamplesQuery}
-            onOpen={(id) => applyParams({ hit: id })}
-            onReset={() => {
-              setExamplesQuery("");
-              setExamplesFilter("all");
-            }}
-          />
-        )
       ) : null}
 
       {queue === "upload" && upload ? (

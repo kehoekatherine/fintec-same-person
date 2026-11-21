@@ -25,6 +25,25 @@ export type EvidenceRecord = {
   note?: string | null;
 };
 
+export type SourcedRecord = {
+  id: string;
+  kind: string;
+  file: string;
+  present: boolean;
+  message: string | null;
+  fields: FieldRow[];
+};
+
+export type OpenedRecord = {
+  hitId: string | null;
+  alertId: string | null;
+  customerRecordId: string | null;
+  customer: SourcedRecord | null;
+  accounts: SourcedRecord[];
+  hit: SourcedRecord | null;
+  alert: SourcedRecord | null;
+};
+
 export type ScreenedCustomer = {
   name: string;
   entityType: string | null;
@@ -56,6 +75,10 @@ export type DeskCase = {
   hit: WatchlistHit;
   resolution: Resolution;
   evidence: EvidenceRecord[];
+  customerNote: string;
+  groundsChecked: boolean;
+  applicableCodes: string[];
+  customerMissing: boolean;
 };
 
 export type DeskPayload = {
@@ -63,8 +86,6 @@ export type DeskPayload = {
   notice: string;
   ranAt: string;
   cases: DeskCase[];
-  /** Customer ids cited by these cases that are not rows in customers.jsonl. Null when that file was not read. */
-  absentCustomerIds: string[] | null;
 };
 
 export type QueueId = "dev" | "brief" | "upload";
@@ -75,12 +96,17 @@ export type ResultRow = {
   decision: Decision;
   reasonCode: string;
   customerRecordId: string | null;
+  /** True when this id is a row in the development customers.jsonl. False when that file was checked and the id is absent. */
+  customerInFile: boolean | null;
   reason: string;
   evidence: string[];
   name: string | null;
   listedName: string | null;
   customerDob: string | null;
   customerCountry: string | null;
+  groundsChecked: boolean;
+  applicableCodes: string[];
+  customerMissing: boolean;
 };
 
 export type ResultPayload = {
@@ -89,8 +115,6 @@ export type ResultPayload = {
   filename?: string;
   notice: string;
   rows: ResultRow[];
-  /** Customer ids cited by these rows that are not rows in customers.jsonl. Null when that file was not read. */
-  absentCustomerIds: string[] | null;
 };
 
 export type DeskFailure = {

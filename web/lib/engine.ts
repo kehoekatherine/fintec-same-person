@@ -3,6 +3,7 @@ import { access, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { parseResolutions } from "@/lib/resolutions";
 import type { Resolution } from "@/lib/types";
@@ -29,7 +30,7 @@ export async function resolveSystemDir(): Promise<string | null> {
 export async function runEngineOn(
   dataDir: string,
   timeoutMs: number,
-  options?: { missingMessage?: string },
+  options?: { missingMessage?: string; allowDevPack?: boolean },
 ): Promise<Resolution[]> {
   const systemDir = await resolveSystemDir();
   if (!systemDir) {
@@ -41,7 +42,10 @@ export async function runEngineOn(
   }
   const folder = await realpath(dataDir);
   if (folder.includes("hackathon-data")) {
-    throw new DeskError("The desk does not read the private data pack.", { status: 500 });
+    const pack = options?.allowDevPack ? await findDevPack() : null;
+    if (!pack || folder !== pack) {
+      throw new DeskError("The desk does not read the private data pack.", { status: 500 });
+    }
   }
   const output = path.join(
     tmpdir(),

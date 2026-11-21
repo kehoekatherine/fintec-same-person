@@ -1,7 +1,8 @@
 import { countryKeys, displayCountry, foldText } from "@/lib/countries";
+import { groundsToShow, type Explanation } from "@/lib/explanation";
 import { formatWhen } from "@/lib/format";
 import { DECISION_LABEL, reasonLabel } from "@/lib/labels";
-import type { Decision, DeskCase, ResultRow } from "@/lib/types";
+import type { Decision } from "@/lib/types";
 
 export type CompareStatus = "Match" | "Different" | "Undefined";
 
@@ -118,8 +119,9 @@ type Facts = {
   reasonCode: string;
   reason: string;
   rechecked: boolean;
+  applicableCodes: readonly string[];
   evidence: string[];
-  absentCustomerIds: readonly string[] | null;
+  missingCustomerId: string | null;
   customerName: string | null;
   hitName: string | null;
   customerDob: string | null;
@@ -130,48 +132,33 @@ type Facts = {
   hitEntity: string | null;
 };
 
-export function comparisonFromRow(
-  row: ResultRow,
-  options: { rechecked: boolean; absentCustomerIds: readonly string[] | null },
-): CaseComparisonModel {
+export function comparisonFromExplanation(item: Explanation): CaseComparisonModel {
+  const screened = item.screened;
+  const hit = item.hit;
   return buildComparison({
-    decision: row.decision,
-    reasonCode: row.reasonCode,
-    reason: row.reason,
-    rechecked: options.rechecked,
-    evidence: row.evidence,
-    absentCustomerIds: options.absentCustomerIds,
-    customerName: row.name,
-    hitName: row.listedName,
-    customerDob: row.customerDob,
-    hitDob: null,
-    customerCountry: row.customerCountry,
-    hitCountry: null,
-    customerEntity: null,
-    hitEntity: null,
+    decision: item.decision,
+    reasonCode: item.reasonCode,
+    reason: item.reason,
+    rechecked: item.groundsChecked,
+    applicableCodes: item.applicableCodes,
+    evidence: item.evidenceIds,
+    missingCustomerId: missingCustomerId(item),
+    customerName: cleanName(screened?.name ?? item.customerName),
+    hitName: cleanName(hit?.name ?? item.listedName),
+    customerDob: screened?.dob ?? item.customerDob,
+    hitDob: hit ? joinList(hit.dobs) : null,
+    customerCountry: screened?.country ?? item.customerCountry,
+    hitCountry: hit ? joinList([...hit.countries, ...hit.nationality]) : null,
+    customerEntity: screened?.entityType ?? null,
+    hitEntity: hit?.entityType ?? null,
   });
 }
 
-export function comparisonFromCase(
-  item: DeskCase,
-  options: { rechecked: boolean; absentCustomerIds: readonly string[] | null },
-): CaseComparisonModel {
-  return buildComparison({
-    decision: item.resolution.decision,
-    reasonCode: item.resolution.reason_code,
-    reason: item.resolution.reason,
-    rechecked: options.rechecked,
-    evidence: item.resolution.evidence,
-    absentCustomerIds: options.absentCustomerIds,
-    customerName: cleanName(item.screened.name),
-    hitName: cleanName(item.hit.name),
-    customerDob: item.screened.dob,
-    hitDob: joinList(item.hit.dobs),
-    customerCountry: item.screened.country,
-    hitCountry: joinList([...item.hit.countries, ...item.hit.nationality]),
-    customerEntity: item.screened.entityType,
-    hitEntity: item.hit.entityType,
-  });
+function missingCustomerId(item: Explanation): string | null {
+  const id = item.customerRecordId;
+  if (item.customerMissing && id && id !== "AMBIGUOUS") return id;
+  const noted = item.customerNote?.match(/^(\S+) is not in customers\.jsonl\./);
+  return noted?.[1] ?? null;
 }
 
 function buildComparison(facts: Facts): CaseComparisonModel {
@@ -217,42 +204,20 @@ function buildComparison(facts: Facts): CaseComparisonModel {
     decision: facts.decision,
     decisionLabel: DECISION_LABEL[facts.decision],
     reason: facts.reasonCode ? reasonLabel(facts.reasonCode) : "No reason code was stored.",
-    also: extraReasons(facts, rows),
+    also: extraReasons(facts),
     action: ACTION[facts.decision],
-    sources: sourceLines(facts.evidence, facts.absentCustomerIds),
+    sources: sourceLines(facts.evidence, facts.missingCustomerId),
   };
 }
 
-function extraReasons(facts: Facts, rows: CompareRow[]): string[] {
+function extraReasons(facts: Facts): string[] {
   if (!facts.rechecked) return [];
-  const status = (id: CompareRow["id"]) => rows.find((row) => row.id === id)?.status;
-  const extras: string[] = [];
-  if (facts.decision === "DIFFERENT_ENTITY") {
-    if (status("entity") === "Different" && facts.reasonCode !== "ENTITY_TYPE_MISMATCH") {
-      extras.push("ENTITY_TYPE_MISMATCH");
-    }
-    if (status("dob") === "Different" && facts.reasonCode !== "DOB_MISMATCH") extras.push("DOB_MISMATCH");
-    const nameAndDob = status("name") === "Match" && status("dob") === "Match";
-    if (status("country") === "Different" && !nameAndDob && facts.reasonCode !== "LOCATION_MISMATCH") {
-      extras.push("LOCATION_MISMATCH");
-    }
-  }
-  if (
-    facts.decision === "SAME_ENTITY" &&
-    facts.reasonCode === "NAME_DOB_LOCATION_MATCH" &&
-    status("name") === "Match" &&
-    status("dob") === "Match" &&
-    status("country") !== "Different" &&
-    status("entity") !== "Different"
-  ) {
-    extras.push("NAME_DOB_MATCH");
-  }
-  return extras.map((code) => `Also true: ${reasonLabel(code)}`);
+  return groundsToShow(facts.reasonCode, true, facts.applicableCodes)
+    .filter((code) => code !== facts.reasonCode)
+    .map((code) => `Also true: ${reasonLabel(code)}`);
 }
 
-function sourceLines(evidence: string[], absentCustomerIds: readonly string[] | null): SourceLine[] {
-  const absent = new Set(absentCustomerIds ?? []);
-  const checked = absentCustomerIds != null;
+function sourceLines(evidence: string[], missingCustomerId: string | null): SourceLine[] {
   const lines: SourceLine[] = [];
   const seen = new Set<string>();
   for (const id of evidence) {
@@ -262,7 +227,14 @@ function sourceLines(evidence: string[], absentCustomerIds: readonly string[] | 
     lines.push({
       id: trimmed,
       type: sourceType(trimmed),
-      missing: checked && trimmed.startsWith("CUS-") && absent.has(trimmed),
+      missing: missingCustomerId != null && trimmed === missingCustomerId,
+    });
+  }
+  if (missingCustomerId && !seen.has(missingCustomerId)) {
+    lines.push({
+      id: missingCustomerId,
+      type: sourceType(missingCustomerId),
+      missing: true,
     });
   }
   return lines;

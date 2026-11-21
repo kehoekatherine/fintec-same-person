@@ -7,8 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CaseComparison } from "@/components/case-comparison";
-import { comparisonFromRow } from "@/lib/comparison";
 import { filterResults } from "@/lib/filter-results";
 import { DECISION_LABEL, FILTERS } from "@/lib/labels";
 import type { FilterId, ResultRow } from "@/lib/types";
@@ -20,22 +18,22 @@ export function ResultsTable({
   rows,
   query,
   filter,
+  activeHitId,
   onQuery,
   onFilter,
+  onOpen,
   onReset,
   caption,
-  rechecked,
-  absentCustomerIds,
 }: {
   rows: ResultRow[];
   query: string;
   filter: FilterId;
+  activeHitId: string | null;
   onQuery: (query: string) => void;
   onFilter: (filter: FilterId) => void;
+  onOpen: (row: ResultRow) => void;
   onReset: () => void;
   caption: string;
-  rechecked: boolean;
-  absentCustomerIds: readonly string[] | null;
 }) {
   const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
   const keyed = useMemo(
@@ -44,20 +42,17 @@ export function ResultsTable({
   );
   const scope = `${filter}\u0000${query}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
   const [page, setPage] = useState(1);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [pageScope, setPageScope] = useState(scope);
   if (pageScope !== scope) {
     setPageScope(scope);
     setPage(1);
-    setSelectedKey(null);
   }
 
   const pageCount = Math.max(1, Math.ceil(keyed.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const start = (safePage - 1) * PAGE_SIZE;
   const visible = keyed.slice(start, start + PAGE_SIZE);
-  const selected = keyed.find((item) => item.key === selectedKey)?.row ?? null;
-  const showName = rows.some((row) => row.name);
+  const showName = rows.some((row) => row.name || row.listedName);
 
   return (
     <section className="grid gap-4" aria-label={caption} data-testid="results-table">
@@ -122,20 +117,21 @@ export function ResultsTable({
             </TableHeader>
             <TableBody>
               {visible.map((item) => {
-                const active = item.key === selectedKey;
+                const active = item.row.hitId === activeHitId;
                 return (
                   <TableRow
                     key={item.key}
                     data-testid={`result-${item.row.hitId}`}
                     data-selected={active ? "true" : "false"}
                     aria-selected={active}
+                    aria-haspopup="dialog"
                     tabIndex={0}
                     className={cn("cursor-pointer hover:bg-muted/80", active && "bg-muted")}
-                    onClick={() => setSelectedKey(item.key)}
+                    onClick={() => onOpen(item.row)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setSelectedKey(item.key);
+                        onOpen(item.row);
                       }
                     }}
                   >
@@ -158,9 +154,7 @@ export function ResultsTable({
                     <TableCell className="font-mono text-xs">{item.row.hitId}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.alertId || "Not given"}</TableCell>
                     <TableCell className="font-mono text-xs">{item.row.reasonCode || "Not given"}</TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {item.row.customerRecordId ?? "Not resolved"}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs">{customerCell(item.row)}</TableCell>
                     <TableCell className="max-w-md text-muted-foreground">
                       <span className="line-clamp-2">{item.row.reason || "No reason recorded."}</span>
                     </TableCell>
@@ -198,35 +192,15 @@ export function ResultsTable({
           </p>
         </div>
       ) : null}
-      {selected ? (
-        <ResultDetail row={selected} rechecked={rechecked} absentCustomerIds={absentCustomerIds} />
-      ) : null}
     </section>
   );
 }
 
-function ResultDetail({
-  row,
-  rechecked,
-  absentCustomerIds,
-}: {
-  row: ResultRow;
-  rechecked: boolean;
-  absentCustomerIds: readonly string[] | null;
-}) {
-  const model = comparisonFromRow(row, { rechecked, absentCustomerIds });
-  return (
-    <article data-testid="result-detail" className="border border-border bg-card px-5 py-5">
-      <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Selected row</p>
-      <p className="mt-2 font-mono text-xs text-muted-foreground">
-        {row.hitId}
-        {row.alertId ? ` · ${row.alertId}` : ""}
-      </p>
-      <div className="mt-5">
-        <CaseComparison model={model} />
-      </div>
-    </article>
-  );
+function customerCell(row: ResultRow): string {
+  if (!row.customerRecordId) return "Not resolved";
+  if (row.customerRecordId === "AMBIGUOUS") return "AMBIGUOUS";
+  if (row.customerInFile === false || row.customerMissing) return `${row.customerRecordId} is not in customers.jsonl`;
+  return row.customerRecordId;
 }
 
 function EmptyResults({ query, onReset }: { query: string; onReset: () => void }) {

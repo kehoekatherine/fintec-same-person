@@ -1,11 +1,13 @@
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { parseCsv, stableId } from "@/lib/csv";
-import { absentCustomerIds } from "@/lib/customer-file";
+import { findDevPack } from "@/lib/data-pack";
 import { DeskError } from "@/lib/errors";
 import { runEngineOn } from "@/lib/engine";
+import { loadApplicableCodes } from "@/lib/grounds";
+import { customerPresence, loadPackIndex } from "@/lib/pack-index";
 import type { Decision, Resolution, ResultPayload, ResultRow } from "@/lib/types";
 import { displayFileName, isAcceptedExtension, MAX_UPLOAD_BYTES, uploadRejection } from "@/lib/upload-file";
 
@@ -81,14 +83,13 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
   const names = new Map<string, string | null>();
 
   if (looksLikeResults(text, extension)) {
-    const rows = resultsFrom(text, extension);
+    const rows = await markCustomers(resultsFrom(text, extension));
     return {
       source: "upload",
       mode: "recorded",
       filename,
-      notice: `${filename} already had a decision on every row, so those rows are shown as recorded. They stay in this browser session and are not saved.`,
+      notice: `${filename} already had a decision on every row, so those rows are shown as recorded. Customer ids are checked against the development customers.jsonl and are not invented. They stay in this browser session and are not saved.`,
       rows,
-      absentCustomerIds: await absentCustomerIds(rows.flatMap((row) => [row.customerRecordId, ...row.evidence])),
     };
   }
 
@@ -98,14 +99,27 @@ export async function acceptUpload(file: File): Promise<ResultPayload> {
     if (id) names.set(id, stringOf(hit.name));
   }
   const scored = await scoreBundle(bundle);
-  const rows = scored.map((row) => toResultRow(row, names.get(row.hit_id) ?? null));
   return {
     source: "upload",
     mode: "scored",
     filename,
-    notice: `system/run scored ${filename}. These rows stay in this browser session and are not saved.`,
-    rows,
-    absentCustomerIds: await absentCustomerIds(rows.flatMap((row) => [row.customerRecordId, ...row.evidence])),
+    notice: scored.joinedDev
+      ? `system/run scored ${filename} against the development customers.jsonl. Customer ids come only from that file. These rows stay in this browser session and are not saved.`
+      : `system/run scored ${filename} with the customers in that file. Customer ids are not invented. These rows stay in this browser session and are not saved.`,
+    rows: await markCustomers(
+      scored.rows.map((row) => {
+        const applicable = scored.codes?.get(row.hit_id);
+        const customerId = row.customer_record_id;
+        return {
+          ...toResultRow(row, names.get(row.hit_id) ?? null),
+          groundsChecked: applicable != null,
+          applicableCodes: applicable ?? [],
+          customerMissing: scored.joinedDev
+            ? false
+            : Boolean(customerId && customerId !== "AMBIGUOUS" && !scored.customerIds.has(customerId)),
+        };
+      }),
+    ),
   };
 }
 
@@ -170,25 +184,74 @@ function bundleFrom(text: string, extension: "csv" | "json" | "jsonl"): HitBundl
   return { hits: [asHit(record, 0)], extras: {}, nameVariants: null };
 }
 
-async function scoreBundle(bundle: HitBundle): Promise<Resolution[]> {
+async function scoreBundle(bundle: HitBundle): Promise<{
+  rows: Resolution[];
+  joinedDev: boolean;
+  codes: Map<string, string[]> | null;
+  customerIds: Set<string>;
+}> {
   if (bundle.hits.length === 0) {
     throw new DeskError("The file has no hits to score.", { status: 400 });
+  }
+  const customerIds = new Set<string>();
+  for (const row of bundle.extras.customers ?? []) {
+    const id = stringOf(row.record_id);
+    if (id) customerIds.add(id);
+  }
+  const hitsOnly = (bundle.extras.customers?.length ?? 0) === 0;
+  const pack = hitsOnly ? await findDevPack() : null;
+  if (hitsOnly && !pack) {
+    throw new DeskError(
+      "A hits-only file is scored against the development customers.jsonl, and that file is not on this machine.",
+      { status: 404 },
+    );
   }
   const dir = await mkdtemp(path.join(tmpdir(), "screening-upload-"));
   try {
     await writeFile(path.join(dir, "hits.jsonl"), toJsonl(bundle.hits), "utf8");
     for (const [key, filename] of Object.entries(JSONL_FILES) as [keyof typeof JSONL_FILES, string][]) {
-      await writeFile(path.join(dir, filename), toJsonl(bundle.extras[key] ?? []), "utf8");
+      const provided = bundle.extras[key];
+      const dest = path.join(dir, filename);
+      if (provided && provided.length > 0) {
+        const rows = key === "customers" ? requireCustomerIds(provided) : withIds(provided, key);
+        await writeFile(dest, toJsonl(rows), "utf8");
+        continue;
+      }
+      if (hitsOnly && pack) {
+        await symlink(path.join(pack, filename), dest);
+        continue;
+      }
+      await writeFile(dest, "", "utf8");
     }
+    const variantsPath = path.join(dir, "name_variants.json");
     if (bundle.nameVariants) {
-      await writeFile(path.join(dir, "name_variants.json"), JSON.stringify(bundle.nameVariants), "utf8");
+      await writeFile(variantsPath, JSON.stringify(bundle.nameVariants), "utf8");
+    } else if (hitsOnly && pack) {
+      await symlink(path.join(pack, "name_variants.json"), variantsPath);
     } else {
-      await copyFile(await briefVariantsPath(), path.join(dir, "name_variants.json"));
+      await copyFile(await briefVariantsPath(), variantsPath);
     }
-    return await runEngineOn(dir, 120_000);
+    const rows = await runEngineOn(dir, 180_000);
+    const codes = await loadApplicableCodes(dir, 180_000);
+    return { rows, joinedDev: Boolean(hitsOnly && pack), codes, customerIds };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+async function markCustomers(rows: ResultRow[]): Promise<ResultRow[]> {
+  const index = await loadPackIndex().catch(() => null);
+  return rows.map((row) => ({ ...row, customerInFile: customerPresence(index, row.customerRecordId) }));
+}
+
+function requireCustomerIds(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.map((row, index) => {
+    if (stringOf(row.record_id)) return row;
+    throw new DeskError("A customer row has no record_id. The desk does not invent customer ids.", {
+      status: 400,
+      detail: `Customer row ${index + 1} has no record_id.`,
+    });
+  });
 }
 
 async function briefVariantsPath(): Promise<string> {
@@ -299,6 +362,7 @@ function objectsFrom(values: unknown[], label: string): Record<string, unknown>[
 }
 
 function withIds(rows: Record<string, unknown>[], key: keyof typeof JSONL_FILES): Record<string, unknown>[] {
+  if (key === "customers") return requireCustomerIds(rows);
   const idKey = REQUIRED_IDS[key];
   if (!idKey) return rows;
   return rows.map((row, index) => {
@@ -347,12 +411,16 @@ function asResult(row: Record<string, unknown>, index: number): ResultRow {
     decision,
     reasonCode: stringOf(row.reason_code) ?? "",
     customerRecordId: stringOf(row.customer_record_id),
+    customerInFile: null,
     reason,
     evidence: evidenceOf(row.evidence),
     name,
     listedName: stringOf(row.listed_name),
     customerDob: stringOf(row.customer_dob) ?? stringOf(row.dob),
     customerCountry: stringOf(row.customer_country) ?? stringOf(row.country),
+    groundsChecked: false,
+    applicableCodes: [],
+    customerMissing: false,
   };
 }
 
@@ -363,12 +431,16 @@ export function toResultRow(row: Resolution, name: string | null = null): Result
     decision: row.decision,
     reasonCode: row.reason_code,
     customerRecordId: row.customer_record_id,
+    customerInFile: null,
     reason: row.reason,
     evidence: row.evidence,
     name,
     listedName: null,
     customerDob: null,
     customerCountry: null,
+    groundsChecked: false,
+    applicableCodes: [],
+    customerMissing: false,
   };
 }
 

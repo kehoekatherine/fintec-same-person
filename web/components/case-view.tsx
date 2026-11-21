@@ -3,7 +3,8 @@ import { ArrowLeft } from "lucide-react";
 import { CaseComparison } from "@/components/case-comparison";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { comparisonFromCase } from "@/lib/comparison";
+import { comparisonFromExplanation } from "@/lib/comparison";
+import { explainCase } from "@/lib/explanation";
 import type { DeskCase } from "@/lib/types";
 import { cn } from "cn";
 
@@ -11,22 +12,14 @@ export function CaseView({
   item,
   hidden,
   onBack,
-  rechecked,
-  absentCustomerIds,
 }: {
   item: DeskCase | null;
   hidden: boolean;
   onBack: () => void;
-  rechecked: boolean;
-  absentCustomerIds: readonly string[] | null;
 }) {
   return (
     <section className={cn("min-w-0", hidden && "hidden lg:block")} aria-label="Open case">
-      {item ? (
-        <CaseBody item={item} onBack={onBack} rechecked={rechecked} absentCustomerIds={absentCustomerIds} />
-      ) : (
-        <CasePlaceholder />
-      )}
+      {item ? <CaseBody item={item} onBack={onBack} /> : <CasePlaceholder />}
     </section>
   );
 }
@@ -37,27 +30,16 @@ function CasePlaceholder() {
       <CardHeader>
         <CardTitle className="font-heading text-2xl">Choose a hit</CardTitle>
         <CardDescription className="text-sm leading-6">
-          The queue lists every fictional case. Open one to compare the customer with the hit.
+          Open a hit to compare the customer with the listed person.
         </CardDescription>
       </CardHeader>
     </Card>
   );
 }
 
-function CaseBody({
-  item,
-  onBack,
-  rechecked,
-  absentCustomerIds,
-}: {
-  item: DeskCase;
-  onBack: () => void;
-  rechecked: boolean;
-  absentCustomerIds: readonly string[] | null;
-}) {
-  const model = comparisonFromCase(item, { rechecked, absentCustomerIds });
+function CaseBody({ item, onBack }: { item: DeskCase; onBack: () => void }) {
   return (
-    <article data-testid="case-view" className="grid gap-4 border border-border bg-card px-5 py-5">
+    <article data-testid="case-view" className="grid gap-6">
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-xs text-muted-foreground">
           {item.hitId} · {item.alertId}
@@ -67,7 +49,7 @@ function CaseBody({
           Queue
         </Button>
       </div>
-      <CaseComparison model={model} />
+      <CaseComparison model={comparisonFromExplanation(explainCase(item))} />
     </article>
   );
 }

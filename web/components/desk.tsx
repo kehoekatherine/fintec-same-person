@@ -5,12 +5,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { CaseView } from "@/components/case-view";
+import { CaseWindow } from "@/components/case-window";
 import { DeskFrame, LoadingState } from "@/components/desk-frame";
 import { QueuePanel } from "@/components/queue-panel";
 import { QueueSwitch } from "@/components/queue-switch";
 import { ResultsTable } from "@/components/results-table";
 import { UploadControl } from "@/components/upload-control";
+import { explainCase, explainRow, type Explanation } from "@/lib/explanation";
 import { FILTERS } from "@/lib/labels";
 import type { DeskFailure, DeskPayload, FilterId, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
@@ -24,7 +25,6 @@ export function Desk() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const filter: FilterId = isFilter(searchParams.get("filter")) ? (searchParams.get("filter") as FilterId) : "all";
-  const hitId = searchParams.get("hit");
   const queueParam = searchParams.get("queue");
   const [queue, setQueue] = useState<QueueId>(queueParam === "brief" ? "brief" : "dev");
   const [seenQueueParam, setSeenQueueParam] = useState(queueParam);
@@ -50,6 +50,7 @@ export function Desk() {
   const [uploadError, setUploadError] = useState<DeskFailure | null>(null);
   const [uploadQuery, setUploadQuery] = useState("");
   const [uploadFilter, setUploadFilter] = useState<FilterId>("all");
+  const [explanation, setExplanation] = useState<Explanation | null>(null);
 
   const applyParams = useCallback(
     (next: Record<string, string | null>) => {
@@ -172,24 +173,17 @@ export function Desk() {
     };
   }, []);
 
-  useEffect(() => {
-    if (queue !== "brief" || briefStatus !== "ready" || !brief || hitId) return;
-    if (!window.matchMedia("(min-width: 1024px)").matches) return;
-    const first = brief.cases[0];
-    if (!first) return;
-    applyParams({ hit: first.hitId });
-  }, [applyParams, brief, briefStatus, hitId, queue]);
-
   const openQueue = useCallback(
     (next: QueueId) => {
       if (next === "upload" && !upload) return;
       setQueue(next);
+      setExplanation(null);
       applyParams({
         queue: next === "dev" ? null : next,
-        hit: next === "brief" ? hitId : null,
+        hit: null,
       });
     },
-    [applyParams, hitId, upload],
+    [applyParams, upload],
   );
 
   const rerun = useCallback(async () => {
@@ -208,6 +202,11 @@ export function Desk() {
       setBrief(body);
       setBriefStatus("ready");
       setBriefError(null);
+      setExplanation((current) => {
+        if (!current || current.source !== "brief") return current;
+        const next = body.cases.find((item) => item.hitId === current.hitId);
+        return next ? explainCase(next) : null;
+      });
     } catch {
       setRerunError({ error: "The desk could not reach the resolver." });
     } finally {
@@ -239,6 +238,7 @@ export function Desk() {
         setUpload(payload);
         setUploadQuery("");
         setUploadFilter("all");
+        setExplanation(null);
         setQueue("upload");
         applyParams({ queue: "upload", hit: null });
       } catch {
@@ -282,7 +282,6 @@ export function Desk() {
     return { counts, filtered };
   }, [brief, filter, query]);
 
-  const openCase = brief?.cases.find((item) => item.hitId === hitId) ?? null;
   const notice =
     queue === "dev" && devStatus === "ready"
       ? dev?.notice
@@ -310,8 +309,17 @@ export function Desk() {
           payload={dev}
           query={devQuery}
           filter={devFilter}
+          activeHitId={explanation?.source === "row" ? explanation.hitId : null}
           onQuery={setDevQuery}
           onFilter={setDevFilter}
+          onOpen={(row) =>
+            setExplanation(
+              explainRow(
+                row,
+                "The development run does not include the customer files. These are the evidence ids the resolver wrote.",
+              ),
+            )
+          }
           onReset={() => {
             setDevQuery("");
             setDevFilter("all");
@@ -329,16 +337,12 @@ export function Desk() {
           visible={visible}
           filter={filter}
           query={query}
-          openCase={openCase}
+          activeHitId={explanation?.source === "brief" ? explanation.hitId : null}
           onFilter={(next) => applyParams({ filter: next === "all" ? null : next })}
           onQuery={setQuery}
           onOpen={(id) => {
-            applyParams({ hit: id });
-            window.scrollTo({ top: 0 });
-          }}
-          onBack={() => {
-            applyParams({ hit: null });
-            window.scrollTo({ top: 0 });
+            const item = brief?.cases.find((entry) => entry.hitId === id);
+            if (item) setExplanation(explainCase(item));
           }}
           onReset={() => {
             setQuery("");
@@ -353,17 +357,27 @@ export function Desk() {
           rows={upload.rows}
           query={uploadQuery}
           filter={uploadFilter}
+          activeHitId={explanation?.source === "row" ? explanation.hitId : null}
           onQuery={setUploadQuery}
           onFilter={setUploadFilter}
+          onOpen={(row) =>
+            setExplanation(
+              explainRow(
+                row,
+                upload.mode === "recorded"
+                  ? "These evidence ids were recorded in the uploaded file."
+                  : "These evidence ids are the records in the uploaded file that decided the hit.",
+              ),
+            )
+          }
           onReset={() => {
             setUploadQuery("");
             setUploadFilter("all");
           }}
           caption={`Uploaded file ${upload.filename ?? ""}`.trim()}
-          rechecked={upload.mode === "scored"}
-          absentCustomerIds={upload.absentCustomerIds}
         />
       ) : null}
+      <CaseWindow item={explanation} onClose={() => setExplanation(null)} />
     </DeskFrame>
   );
 }
@@ -374,8 +388,10 @@ function DevQueue({
   payload,
   query,
   filter,
+  activeHitId,
   onQuery,
   onFilter,
+  onOpen,
   onReset,
   onRetry,
 }: {
@@ -384,8 +400,10 @@ function DevQueue({
   payload: ResultPayload | null;
   query: string;
   filter: FilterId;
+  activeHitId: string | null;
   onQuery: (query: string) => void;
   onFilter: (filter: FilterId) => void;
+  onOpen: (row: ResultPayload["rows"][number]) => void;
   onReset: () => void;
   onRetry: () => void;
 }) {
@@ -415,12 +433,12 @@ function DevQueue({
       rows={payload.rows}
       query={query}
       filter={filter}
+      activeHitId={activeHitId}
       onQuery={onQuery}
       onFilter={onFilter}
+      onOpen={onOpen}
       onReset={onReset}
       caption="Development screening results"
-      rechecked={payload.mode === "scored"}
-      absentCustomerIds={payload.absentCustomerIds}
     />
   );
 }
@@ -433,11 +451,10 @@ function BriefQueue({
   visible,
   filter,
   query,
-  openCase,
+  activeHitId,
   onFilter,
   onQuery,
   onOpen,
-  onBack,
   onReset,
   onRetry,
 }: {
@@ -448,16 +465,13 @@ function BriefQueue({
   visible: { counts: Record<FilterId, number>; filtered: DeskPayload["cases"] };
   filter: FilterId;
   query: string;
-  openCase: DeskPayload["cases"][number] | null;
+  activeHitId: string | null;
   onFilter: (filter: FilterId) => void;
   onQuery: (query: string) => void;
   onOpen: (hitId: string) => void;
-  onBack: () => void;
   onReset: () => void;
   onRetry: () => void;
 }) {
-  const caseHidden = !openCase;
-  const queueHidden = Boolean(openCase);
   return (
     <div className="grid gap-4">
       {rerunError ? (
@@ -486,26 +500,19 @@ function BriefQueue({
         </div>
       ) : null}
       {status === "ready" && payload && payload.cases.length > 0 ? (
-        <div className="grid gap-8 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start">
-          <QueuePanel
-            cases={visible.filtered}
-            counts={visible.counts}
-            filter={filter}
-            query={query}
-            activeId={openCase?.hitId ?? null}
-            hidden={queueHidden}
-            onFilter={onFilter}
-            onQuery={onQuery}
-            onOpen={onOpen}
-            onReset={onReset}
-          />
-          <CaseView
-            item={openCase}
-            hidden={caseHidden}
-            onBack={onBack}
-            rechecked={payload.source === "engine"}
-            absentCustomerIds={payload.absentCustomerIds}
-          />
+        <div className="max-w-3xl">
+        <QueuePanel
+          cases={visible.filtered}
+          counts={visible.counts}
+          filter={filter}
+          query={query}
+          activeId={activeHitId}
+          hidden={false}
+          onFilter={onFilter}
+          onQuery={onQuery}
+          onOpen={onOpen}
+          onReset={onReset}
+        />
         </div>
       ) : null}
     </div>

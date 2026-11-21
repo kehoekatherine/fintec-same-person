@@ -43,8 +43,8 @@ export async function loadDevelopmentRun(): Promise<ResultPayload> {
     source: "development",
     mode: resolved.fresh ? "scored" : "recorded",
     notice: resolved.fresh
-      ? "Development run from system/run on the development data folder. Open a row to read the customer, account, notes, checks, and hit from that folder. An id that is not in customers.jsonl is not opened as a customer."
-      : "The development folder is on this machine, but the Python resolver is not available, so these are the recorded decisions in output/dev.jsonl. Open a row to read the customer, account, notes, checks, and hit from that folder.",
+      ? "Decisions from system/run. An id missing from customers.jsonl is not opened as a customer."
+      : "The Python resolver is not available, so these are the recorded decisions in output/dev.jsonl.",
     rows: resolved.rows.map((row) => decorate(row, index, codes)),
   };
 }

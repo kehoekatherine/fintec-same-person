@@ -89,8 +89,8 @@ export function ResultsTable({
   const columnCount = showName ? 10 : 9;
 
   return (
-    <section className="flex flex-col gap-3 lg:h-full lg:min-h-0" aria-label={caption} data-testid="results-table">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by decision">
+    <section className="flex flex-col gap-2 lg:h-full lg:min-h-0" aria-label={caption} data-testid="results-table">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by decision">
         {FILTERS.map((item) => {
           const pressed = filter === item.id;
           return (
@@ -110,25 +110,16 @@ export function ResultsTable({
             </Button>
           );
         })}
-      </div>
-      <label className="grid max-w-md gap-1 text-sm">
-        <span className="text-muted-foreground">Search</span>
         <Input
           value={query}
           onChange={(event) => onQuery(event.target.value)}
           placeholder="Hit id, name, reason code, or reason"
           aria-label="Search the results"
           data-testid="result-search"
-          className="h-10 bg-card"
+          className="h-10 w-full bg-card sm:ml-auto sm:w-72"
         />
-      </label>
-      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-        Closeness is the match percentage from the name, date of birth, and country. Bias is the chance that
-        match is unreliable. Confidence takes that bias off the closeness for a review or confirmation, and on a
-        clearance it follows how direct the contradiction is. Select a heading to sort ascending, and select it
-        again for descending.
-      </p>
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <p aria-live="polite" data-testid="result-count">
           {keyed.length === 1 ? "1 hit in view" : `${keyed.length} hits in view`}
         </p>

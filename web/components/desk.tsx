@@ -198,7 +198,7 @@ export function Desk() {
 
   return (
     <DeskFrame notice={notice}>
-      <div className="mb-8 grid gap-6">
+      <div className="mb-3 flex flex-col gap-2">
         <QueueSwitch queue={queue} showUpload={Boolean(upload)} onQueue={openQueue} />
         <UploadControl busy={uploadBusy} error={uploadError} onFile={(file) => void sendFile(file)} />
       </div>

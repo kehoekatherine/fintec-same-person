@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { ModelFitnessFigures } from "@/components/model-fitness";
-import { formatDecisionScore, reviewerReport } from "@/lib/reviewer-cost";
+import { reviewerReport } from "@/lib/reviewer-cost";
 import type { PracticeLabel, ResultRow } from "@/lib/types";
 
 const TITLE =
@@ -26,10 +26,6 @@ export function ReviewerCostLine({ rows, labels }: { rows: ResultRow[]; labels?:
           <span className="tabular-nums" data-testid="reviewer-baseline">
             {judging.baseline}
           </span>
-          , score{" "}
-          <span className="font-medium text-foreground tabular-nums" data-testid="reviewer-score">
-            {formatDecisionScore(judging.score)}
-          </span>
           . {count(judging.labeled, "labeled hit", "labeled hits")},{" "}
           {count(judging.unsafe, "unsafe clearance", "unsafe clearances")}, {withoutLabel(judging.unlabeled)}
           {judging.missingLabels > 0
@@ -38,7 +34,10 @@ export function ReviewerCostLine({ rows, labels }: { rows: ResultRow[]; labels?:
           . Reviewer workload, not the judging score:{" "}
         </>
       ) : (
-        <>No labels on this run, so this is reviewer workload, not a judging score. Reviewer workload: </>
+        <>
+          <ModelFitnessFigures rows={rows} labels={labels} score={null} baseline={null} />. No labels on this run, so
+          this is reviewer workload, not a judging score. Reviewer workload:{" "}
+        </>
       )}
       <span className="font-medium text-foreground tabular-nums" data-testid="reviewer-workload">
         {workload.review}

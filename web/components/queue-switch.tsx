@@ -3,10 +3,7 @@
 import { Button } from "@/components/ui/button";
 import type { QueueId } from "@/lib/types";
 
-const QUEUES: { id: QueueId; label: string }[] = [
-  { id: "dev", label: "Development run" },
-  { id: "examples", label: "Practice examples" },
-];
+const QUEUES: { id: QueueId; label: string }[] = [{ id: "dev", label: "Development run" }];
 
 export function QueueSwitch({
   queue,
@@ -17,7 +14,8 @@ export function QueueSwitch({
   showUpload: boolean;
   onQueue: (queue: QueueId) => void;
 }) {
-  const items = showUpload ? [...QUEUES, { id: "upload" as const, label: "Uploaded file" }] : QUEUES;
+  if (!showUpload) return null;
+  const items = [...QUEUES, { id: "upload" as const, label: "Uploaded file" }];
   return (
     <div role="group" aria-label="Queue" className="flex flex-wrap gap-2">
       {items.map((item) => {

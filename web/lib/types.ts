@@ -116,7 +116,7 @@ export type DeskPayload = {
   cases: DeskCase[];
 };
 
-export type QueueId = "dev" | "examples" | "upload";
+export type QueueId = "dev" | "upload";
 
 export type ResultRow = {
   hitId: string;

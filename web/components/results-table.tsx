@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
-import { ClosenessLine } from "@/components/case-assessment";
+import { biasRiskForRow } from "@/lib/bias-risk";
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { filterResults } from "@/lib/filter-results";
 import { DECISION_LABEL, FILTERS } from "@/lib/labels";
+import { confidenceFor } from "@/lib/list-scores";
+import { nextSort, sortRows, type SortKey, type SortState } from "@/lib/list-sort";
 import type { FilterId, ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
@@ -37,11 +40,13 @@ export function ResultsTable({
   caption: string;
 }) {
   const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
+  const [sort, setSort] = useState<SortState | null>(null);
+  const ordered = useMemo(() => sortRows(filtered, sort), [filtered, sort]);
   const keyed = useMemo(
-    () => filtered.map((row, index) => ({ row, key: `${row.hitId}:${index}` })),
-    [filtered],
+    () => ordered.map((row, index) => ({ row, key: `${row.hitId}:${index}` })),
+    [ordered],
   );
-  const scope = `${filter}\u0000${query}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
+  const scope = `${filter}\u0000${query}\u0000${sort?.key ?? ""}\u0000${sort?.dir ?? ""}\u0000${rows.length}\u0000${rows[0]?.hitId ?? ""}\u0000${rows.at(-1)?.hitId ?? ""}`;
   const selectedIndex = activeHitId ? keyed.findIndex((item) => item.row.hitId === activeHitId) : -1;
   const [page, setPage] = useState(1);
   const [pageScope, setPageScope] = useState(scope);
@@ -106,6 +111,12 @@ export function ResultsTable({
           className="h-10 bg-card"
         />
       </label>
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+        Closeness is the match percentage from the name, date of birth, and country. Bias is the chance that
+        match is unreliable. Confidence takes that bias off the closeness for a review or confirmation, and on a
+        clearance it follows how direct the contradiction is. Select a heading to sort ascending, and select it
+        again for descending.
+      </p>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
         <p aria-live="polite" data-testid="result-count">
           {keyed.length === 1 ? "1 hit in view" : `${keyed.length} hits in view`}
@@ -120,23 +131,32 @@ export function ResultsTable({
         <EmptyResults query={query} onReset={onReset} />
       ) : (
         <div data-testid="result-scroller" className="overflow-x-auto border border-border bg-card">
-          <Table className="min-w-[56rem]">
+          <Table className="min-w-[72rem]">
             <TableCaption>{caption}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Decision</TableHead>
-                <TableHead>Closeness</TableHead>
-                {showName ? <TableHead>Customer name</TableHead> : null}
-                <TableHead>Hit</TableHead>
-                <TableHead>Alert</TableHead>
-                <TableHead>Reason code</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Reason</TableHead>
+                <SortHead label="Decision" sortKey="decision" sort={sort} onSort={setSort} />
+                <SortHead label="Closeness" sortKey="closeness" sort={sort} onSort={setSort} />
+                <SortHead label="Bias" sortKey="bias" sort={sort} onSort={setSort} />
+                <SortHead label="Confidence" sortKey="confidence" sort={sort} onSort={setSort} />
+                {showName ? <SortHead label="Customer name" sortKey="name" sort={sort} onSort={setSort} /> : null}
+                <SortHead label="Hit" sortKey="hit" sort={sort} onSort={setSort} />
+                <SortHead label="Alert" sortKey="alert" sort={sort} onSort={setSort} />
+                <SortHead label="Reason code" sortKey="reasonCode" sort={sort} onSort={setSort} />
+                <SortHead label="Customer" sortKey="customer" sort={sort} onSort={setSort} />
+                <SortHead label="Reason" sortKey="reason" sort={sort} onSort={setSort} />
               </TableRow>
             </TableHeader>
             <TableBody>
               {visible.map((item) => {
                 const active = item.row.hitId === activeHitId;
+                const bias = biasRiskForRow(item.row);
+                const confidence = confidenceFor({
+                  decision: item.row.decision,
+                  reasonCode: item.row.reasonCode,
+                  closeness: item.row.closeness,
+                  bias,
+                });
                 return (
                   <TableRow
                     key={item.key}
@@ -161,11 +181,32 @@ export function ResultsTable({
                         {DECISION_LABEL[item.row.decision]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="max-w-64">
-                      {item.row.closeness ? (
-                        <ClosenessLine closeness={item.row.closeness} testId={`closeness-${item.row.hitId}`} />
-                      ) : null}
-                    </TableCell>
+                    <ScoreCell
+                      total={item.row.closeness?.total ?? null}
+                      band={item.row.closeness?.band ?? null}
+                      title={
+                        item.row.closeness
+                          ? `Name ${item.row.closeness.name}, date of birth ${item.row.closeness.dateOfBirth}, country ${item.row.closeness.country}`
+                          : "Cleared hits are not given a closeness score."
+                      }
+                      testId={`closeness-${item.row.hitId}`}
+                    />
+                    <ScoreCell
+                      total={bias?.total ?? null}
+                      band={bias?.band ?? null}
+                      title={
+                        bias
+                          ? bias.reasons.map((reason) => `${reason.label} ${reason.points}`).join(". ")
+                          : "Cleared hits are not given a bias score."
+                      }
+                      testId={`bias-${item.row.hitId}`}
+                    />
+                    <ScoreCell
+                      total={confidence.total}
+                      band={confidence.band}
+                      title={confidence.detail}
+                      testId={`confidence-${item.row.hitId}`}
+                    />
                     {showName ? (
                       <TableCell className="max-w-48">
                         <span className="block">
@@ -219,6 +260,69 @@ export function ResultsTable({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function SortHead({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: SortState | null;
+  onSort: (next: SortState) => void;
+}) {
+  const active = sort?.key === sortKey;
+  const direction = active ? sort.dir : null;
+  const nextLabel =
+    direction === "asc" ? `Sort ${label} descending` : `Sort ${label} ascending`;
+  return (
+    <TableHead aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 text-left text-xs font-medium text-muted-foreground"
+        data-testid={`sort-${sortKey}`}
+        aria-label={nextLabel}
+        onClick={() => onSort(nextSort(sort, sortKey))}
+      >
+        {label}
+        {direction === "asc" ? (
+          <ArrowUp className="size-3" aria-hidden />
+        ) : direction === "desc" ? (
+          <ArrowDown className="size-3" aria-hidden />
+        ) : (
+          <ArrowUpDown className="size-3 opacity-50" aria-hidden />
+        )}
+      </button>
+    </TableHead>
+  );
+}
+
+function ScoreCell({
+  total,
+  band,
+  title,
+  testId,
+}: {
+  total: number | null;
+  band: string | null;
+  title: string;
+  testId: string;
+}) {
+  if (total == null) {
+    return (
+      <TableCell className="text-muted-foreground" data-testid={testId} title={title}>
+        —
+      </TableCell>
+    );
+  }
+  return (
+    <TableCell data-testid={testId} title={title}>
+      <span className="block font-medium tabular-nums">{total}</span>
+      {band ? <span className="block text-xs text-muted-foreground">{band}</span> : null}
+    </TableCell>
   );
 }
 

@@ -13,7 +13,7 @@ For every hit it:
 3. Reads who the listed person is. Dates and countries come from the hit's own fields, from an age stated in the first paragraph of the profile, or from a web-search snippet that is actually about that hit.
 4. Compares them. A contradiction clears the hit. Agreement on the required facts confirms it. Anything else stays a review. Clearing a true match is the expensive mistake, so doubt stays with a reviewer.
 
-The scored entrypoint is `system/run`. The screening desk in `web/` opens the development run and the practice-label hits from a local data folder. From the repository root:
+The scored entrypoint is `system/run`. The screening desk in `web/` opens the development run. From the repository root:
 
 ```sh
 cd web && npm install && npm run dev
@@ -103,9 +103,9 @@ How a customer is resolved, how a hit is read, and how evidence is chosen is des
 
 ## Try it
 
-The screening desk is a Next.js app in `web/`. It shows the full development run and, separately, the practice-label hits as openable examples. It is not a live watchlist.
+The screening desk is a Next.js app in `web/`. It shows the development run. It is not a live watchlist.
 
-The desk has light and dark mode. Both queues read the unpacked development folder when it is on this machine (`SCREENING_DEV_DIR`, or `/tmp/hackathon-data/unpacked/screening/dev`). That folder is not in this repository. The development queue re-runs `system/run` on the folder and opens customer, account, hit, and alert fields from its `customers.jsonl`, `accounts.jsonl`, `hits.jsonl`, and `alerts.jsonl`. The practice examples are the hits in `practice_labels.jsonl`, joined to those files plus `notes.jsonl` and `kyc_checks.jsonl`. If the folder is absent, the desk says the data folder is not on this machine. It does not substitute invented records. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. A hits-only file is joined to the development `customers.jsonl` and the desk does not invent customer ids. The upload stays in the browser session and is not written into the repository.
+The desk has light and dark mode. The list reads the unpacked development folder when it is on this machine (`SCREENING_DEV_DIR`, or `/tmp/hackathon-data/unpacked/screening/dev`). That folder is not in this repository. The page re-runs `system/run` on the folder and opens customer, account, hit, and alert fields from its `customers.jsonl`, `accounts.jsonl`, `hits.jsonl`, and `alerts.jsonl`. Each row shows closeness (the match percentage from name, date of birth, and country), bias risk, and a confidence score. Column headings sort the list ascending and descending. Cleared hits have no closeness or bias score. If the folder is absent, the desk says the data folder is not on this machine. It does not substitute invented records. A CSV or JSON file of hits can be added from the page: if every row already has a decision, the desk shows those rows, and otherwise it scores the file with `system/run`. A hits-only file is joined to the development `customers.jsonl` and the desk does not invent customer ids. The upload stays in the browser session and is not written into the repository.
 
 ```sh
 cd web
@@ -115,4 +115,4 @@ npm run dev
 
 The dev server listens on port 4317. Open http://127.0.0.1:4317
 
-`system/run` is unchanged. It still uses only the Python standard library, reads a data folder, and writes one JSON line per hit. Pass absolute paths. The `system/run` script changes into `system/` before it reads the folder. The practice-examples queue can re-run that command on the development data folder from the page.
+`system/run` is unchanged. It still uses only the Python standard library, reads a data folder, and writes one JSON line per hit. Pass absolute paths. The `system/run` script changes into `system/` before it reads the folder.

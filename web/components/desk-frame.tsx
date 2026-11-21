@@ -42,8 +42,7 @@ export function DeskFrame({
             </p>
             <h1 className="mt-2 font-heading text-3xl tracking-tight text-foreground">Screening desk</h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-              Both queues read the development data folder when it is on this machine. Practice examples are
-              the practice-label hits. This is not a live watchlist and not a regulatory filing.
+              The development run is the list on this page. This is not a live watchlist and not a regulatory filing.
             </p>
             {notice ? (
               <p className="mt-3 max-w-xl text-sm leading-6 text-foreground/85" role="status">
@@ -129,7 +128,7 @@ export function LoadingState({ mode = "queue" }: { mode?: "queue" | "table" }) {
   }
   return (
     <div data-testid="loading" role="status" aria-live="polite" className="grid gap-4 lg:grid-cols-[22rem_1fr]">
-      <p className="sr-only">Loading the practice examples from the development data folder.</p>
+      <p className="sr-only">Loading the development run.</p>
       <div className="grid gap-3">
         <Skeleton className="h-11 w-full" />
         <Skeleton className="h-24 w-full" />

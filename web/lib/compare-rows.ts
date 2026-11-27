@@ -73,6 +73,32 @@ export function rowsFromStored(comparison: Comparison): CompareDisplayRow[] {
   ];
 }
 
+/** Comparison already stored on a recorded row, when the customer source file is not published. */
+export function factsForRecordedComparison(comparison: Comparison | null): CaseFacts {
+  if (!comparison) {
+    return {
+      packPresent: false,
+      hitPresent: false,
+      customerInFile: null,
+      customerMessage: CUSTOMER_FILE_ABSENT,
+      core: [],
+      city: null,
+      entity: null,
+      others: [],
+    };
+  }
+  return {
+    packPresent: true,
+    hitPresent: true,
+    customerInFile: null,
+    customerMessage: null,
+    core: rowsFromStored(comparison),
+    city: null,
+    entity: null,
+    others: [],
+  };
+}
+
 export function customerAbsenceMessage(id: string | null, inFile: boolean | null): string | null {
   if (id === "AMBIGUOUS") {
     return "More than one customer fits this alert. No single customer record is selected.";

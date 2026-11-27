@@ -2,6 +2,7 @@
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
+import { staticDesk } from "@/lib/public-base";
 import type { DeskFailure } from "@/lib/types";
 import { cn } from "cn";
 
@@ -41,10 +42,9 @@ export function UploadControl({
       <details className="text-sm text-muted-foreground">
         <summary className="cursor-pointer">File format</summary>
         <p className="mt-1 max-w-3xl leading-5" data-testid="upload-hint">
-          Add a .zip of a data folder, or a .json bundle of its files: customers, hits, alerts, accounts,
-          onboarding, kyc checks, notes, search results, and name variants. Labels in that same folder are optional.
-          A hits-only file is not joined to another customer file; the missing file is named. A file that already has
-          a decision on every row is shown as recorded.
+          {staticDesk()
+            ? "On the public site, choose a .csv, .json, or .jsonl file that already has a decision on every row. A zip of source files, and a file with no decisions, need the local desk, which runs the Python resolver."
+            : "Add a .zip of a data folder, or a .json bundle of its files: customers, hits, alerts, accounts, onboarding, kyc checks, notes, search results, and name variants. Labels in that same folder are optional. A hits-only file is not joined to another customer file; the missing file is named. A file that already has a decision on every row is shown as recorded."}
         </p>
       </details>
       {error ? (

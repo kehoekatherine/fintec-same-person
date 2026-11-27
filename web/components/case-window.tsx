@@ -10,8 +10,15 @@ import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { biasRiskForExplanation } from "@/lib/bias-risk";
-import { comparisonRows, CUSTOMER_FILE_ABSENT, type CaseFacts, type CompareDisplayRow } from "@/lib/compare-rows";
+import {
+  comparisonRows,
+  CUSTOMER_FILE_ABSENT,
+  factsForRecordedComparison,
+  type CaseFacts,
+  type CompareDisplayRow,
+} from "@/lib/compare-rows";
 import { actionFor, type Explanation } from "@/lib/explanation";
+import { staticDesk } from "@/lib/public-base";
 import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
 import { cn } from "cn";
 
@@ -105,6 +112,7 @@ export function CasePanel({ item, onBack }: { item: Explanation; onBack: () => v
 }
 
 function ModelReasoning({ item, rows }: { item: Explanation; rows: CompareDisplayRow[] }) {
+  const published = staticDesk();
   const [text, setText] = useState<string | null>(null);
   const [source, setSource] = useState<"model" | "rules" | "unavailable" | "error" | "loading">("loading");
   const payload = JSON.stringify({
@@ -119,11 +127,16 @@ function ModelReasoning({ item, rows }: { item: Explanation; rows: CompareDispla
       status: row.status,
     })),
   });
-
-  useEffect(() => {
-    const controller = new AbortController();
+  const [seenPayload, setSeenPayload] = useState(payload);
+  if (!published && seenPayload !== payload) {
+    setSeenPayload(payload);
     setSource("loading");
     setText(null);
+  }
+
+  useEffect(() => {
+    if (published) return;
+    const controller = new AbortController();
     void (async () => {
       try {
         const response = await fetch("/api/reason", {
@@ -149,14 +162,16 @@ function ModelReasoning({ item, rows }: { item: Explanation; rows: CompareDispla
       }
     })();
     return () => controller.abort();
-  }, [payload]);
+  }, [payload, published]);
 
-  const label = source === "model" ? "Model reasoning" : source === "rules" ? "Rule reasoning" : "Reasoning";
+  const shownSource = published ? "rules" : source;
+  const shownText = published ? item.reason || "No rule reason was recorded." : text;
+  const label = shownSource === "model" ? "Model reasoning" : shownSource === "rules" ? "Rule reasoning" : "Reasoning";
   return (
     <section aria-label="Reasoning" data-testid="model-reasoning">
       <h3 className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">{label}</h3>
       <p className="mt-1 text-sm leading-6 text-foreground" data-testid="model-reasoning-text">
-        {source === "loading" ? "Asking the model…" : text}
+        {shownSource === "loading" ? "Asking the model…" : shownText}
       </p>
     </section>
   );
@@ -223,17 +238,20 @@ function caseMessage(facts: CaseFacts): string | null {
 
 function useCaseFacts(item: Explanation): { data: CaseFacts | null; error: string | null } {
   const evidenceKey = item.evidenceIds.join("\n");
-  const [data, setData] = useState<CaseFacts | null>(null);
+  const [data, setData] = useState<CaseFacts | null>(() =>
+    staticDesk() ? factsForRecordedComparison(item.comparison) : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState("");
   const nextScope = `${item.hitId}\n${item.alertId}\n${item.customerRecordId ?? ""}\n${evidenceKey}`;
   if (scope !== nextScope) {
     setScope(nextScope);
-    setData(null);
     setError(null);
+    setData(staticDesk() ? factsForRecordedComparison(item.comparison) : null);
   }
 
   useEffect(() => {
+    if (staticDesk()) return;
     const params = new URLSearchParams();
     if (item.hitId) params.set("hit", item.hitId);
     if (item.alertId) params.set("alert", item.alertId);

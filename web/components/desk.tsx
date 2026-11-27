@@ -10,9 +10,11 @@ import { ModelCost } from "@/components/model-cost";
 import { QueueSwitch } from "@/components/queue-switch";
 import { ViewNav } from "@/components/view-nav";
 import { UploadControl } from "@/components/upload-control";
+import { isClusterFit } from "@/lib/cluster-fit";
+import { applyCombinedOutcome } from "@/lib/combined-outcome";
 import { costSection, deskView, legacyAddress, type CostSection, type DeskView } from "@/lib/desk-view";
 import { DeskError } from "@/lib/errors";
-import { developmentUrl, staticDesk } from "@/lib/public-base";
+import { developmentUrl, publicUrl, staticDesk } from "@/lib/public-base";
 import { readRecordedUpload } from "@/lib/recorded-results";
 import type { DeskFailure, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
@@ -111,8 +113,19 @@ export function Desk() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const result = await readDevelopment();
-      if (!cancelled) applyDevelopment(result);
+      const [result, hits] = await Promise.all([readDevelopment(), readClusterHits()]);
+      if (cancelled) return;
+      if (result.status === "ready" && !hits) {
+        applyDevelopment({
+          status: "error",
+          error: { error: "The combined outcome could not be read." },
+        });
+        return;
+      }
+      if (result.status === "ready" && hits) {
+        result.payload = { ...result.payload, rows: applyCombinedOutcome(result.payload.rows, hits) };
+      }
+      applyDevelopment(result);
     })();
     return () => {
       cancelled = true;
@@ -203,6 +216,17 @@ type DevelopmentRead =
   | { status: "empty" }
   | { status: "error"; error: DeskFailure }
   | { status: "ready"; payload: ResultPayload };
+
+async function readClusterHits() {
+  try {
+    const response = await fetch(publicUrl("/demo/clusters.json"), { cache: "no-store" });
+    const body = (await response.json()) as unknown;
+    if (!response.ok || !isClusterFit(body)) return null;
+    return body.hits;
+  } catch {
+    return null;
+  }
+}
 
 async function readDevelopment(): Promise<DevelopmentRead> {
   try {

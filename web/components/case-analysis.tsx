@@ -14,7 +14,9 @@ import { biasRiskForRow } from "@/lib/bias-risk";
 import type { ClusterHit } from "@/lib/cluster-fit";
 import { comparisonRows, factsForRecordedComparison } from "@/lib/compare-rows";
 import { actionFor } from "@/lib/explanation";
-import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
+import { filterResults } from "@/lib/filter-results";
+import { DECISION_LABEL, DECISION_MEANING, FILTERS, reasonLabel } from "@/lib/labels";
+import type { FilterId } from "@/lib/types";
 import { confidenceFor } from "@/lib/list-scores";
 import type { ResultRow } from "@/lib/types";
 import { cn } from "cn";
@@ -29,6 +31,7 @@ export function CaseAnalysis({
   onHit: (hitId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FilterId>("all");
   const fitted = useClusterFit();
   const escalations = useMemo(() => {
     const found = new Map<string, ClusterHit>();
@@ -38,13 +41,30 @@ export function CaseAnalysis({
     }
     return found;
   }, [fitted]);
-  const filtered = useMemo(() => filterHits(rows, query), [query, rows]);
+  const { counts, filtered } = useMemo(() => filterResults(rows, query, filter), [filter, query, rows]);
   const index = hitId ? rows.findIndex((row) => row.hitId === hitId) : -1;
   const row = index >= 0 ? rows[index] : null;
 
   return (
     <div data-testid="case-analysis" className="grid items-start gap-4 lg:grid-cols-[18rem_1fr]">
       <aside className="grid gap-2">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Filter by outcome">
+          {FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              data-testid={`filter-${item.id}`}
+              aria-pressed={filter === item.id}
+              className={cn(
+                "h-8 border px-2 text-xs",
+                filter === item.id ? "border-foreground bg-card" : "border-border",
+              )}
+              onClick={() => setFilter(item.id)}
+            >
+              {item.label} {counts[item.id]}
+            </button>
+          ))}
+        </div>
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -81,6 +101,9 @@ export function CaseAnalysis({
                       <Badge variant="outline" className="h-5 border-review/40 bg-review/15 text-review">
                         {escalation.escalation.priority ? "Priority — sent to review" : "Sent to review"}
                       </Badge>
+                    ) : null}
+                    {item.escalationNote ? (
+                      <span className="basis-full text-xs text-muted-foreground">{item.escalationNote}</span>
                     ) : null}
                   </span>
                 </button>
@@ -146,7 +169,14 @@ function OpenedHit({
       </div>
       <section className={cn("grid gap-4 border border-border border-l-4 bg-card px-5 py-5 lg:grid-cols-2", DECISION_RULE[row.decision])}>
         <div>
-          <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">{DECISION_LABEL[row.decision]}</p>
+          <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase" data-testid="analysis-outcome">
+            {DECISION_LABEL[row.decision]}
+          </p>
+          {row.escalationNote ? (
+            <p className="mt-1 text-sm text-muted-foreground" data-testid="rules-secondary">
+              {row.escalationNote}
+            </p>
+          ) : null}
           <h2 className="mt-1 font-heading text-3xl">{row.name ?? "Name not recorded"}</h2>
           <p className="mt-2 font-mono text-xs break-all text-muted-foreground">
             {row.hitId}
@@ -292,16 +322,6 @@ function MissingHit({ hitId }: { hitId: string | null }) {
           : "Pick a hit from the list. The address keeps the view and the hit id."}
       </p>
     </div>
-  );
-}
-
-function filterHits(rows: ResultRow[], query: string): ResultRow[] {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return rows;
-  return rows.filter((row) =>
-    [row.hitId, row.alertId, row.customerRecordId, row.name, row.listedName, row.reasonCode, row.reason]
-      .filter((value): value is string => Boolean(value))
-      .some((value) => value.toLowerCase().includes(needle)),
   );
 }
 

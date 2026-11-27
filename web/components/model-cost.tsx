@@ -477,8 +477,9 @@ function ClusterReport({ fit }: { fit: ClusterFit }) {
       <ClusterScatter fit={fit} />
       <h3 className="font-heading text-xl">Cluster against the rules</h3>
       <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-        The rules outcome was not used in fitting. This table only counts how the recorded decision falls inside each
-        cluster. It is not accuracy.
+        The rules outcome was not used in fitting. These columns are the raw rules decision, not the combined outcome.
+        The combined workload is {fit.rulesPlusCluster.after.cleared} cleared, {fit.rulesPlusCluster.after.confirmed}{" "}
+        confirmed, and {fit.rulesPlusCluster.after.review} review. This table is not accuracy.
       </p>
       <div className="overflow-x-auto border border-border">
         <table className="w-full text-left text-sm" data-testid="cluster-crosstab">
@@ -552,8 +553,37 @@ function ClusterScatter({ fit }: { fit: ClusterFit }) {
   );
 }
 
+function CombinedWorkload({ fallbackHits }: { fallbackHits: number }) {
+  const fitted = useClusterFit();
+  if (fitted.status !== "ready") {
+    return <p className="text-sm text-muted-foreground">Reading the combined outcome for {fallbackHits} hits…</p>;
+  }
+  const { before, after } = fitted.fit.rulesPlusCluster;
+  const total = after.cleared + after.confirmed + after.review || 1;
+  return (
+    <>
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+        Combined outcome: the rules decision, with a k-means disagreement sent to review. These counts are workload,
+        not a judging score.
+      </p>
+      <div className="flex h-3 overflow-hidden border border-border" aria-hidden="true">
+        <span className="bg-clear" style={{ width: `${(after.cleared / total) * 100}%` }} />
+        <span className="bg-confirm" style={{ width: `${(after.confirmed / total) * 100}%` }} />
+        <span className="bg-review" style={{ width: `${(after.review / total) * 100}%` }} />
+      </div>
+      <dl className="grid gap-3 sm:grid-cols-3" data-testid="workload-counts">
+        <Stat value={String(after.cleared)} label="Cleared" note="combined outcome" />
+        <Stat value={String(after.confirmed)} label="Confirmed" note="combined outcome" />
+        <Stat value={String(after.review)} label="Review" note="a person opens these" />
+      </dl>
+      <p className="text-sm text-muted-foreground" data-testid="risk-raw-rules">
+        Raw rules: {before.cleared} cleared, {before.confirmed} confirmed, {before.review} review.
+      </p>
+    </>
+  );
+}
+
 function Risk({ run }: { run: MeasuredRun }) {
-  const total = run.decisions.different + run.decisions.same + run.decisions.review || 1;
   return (
     <section data-testid="cost-risk" className="grid gap-4">
       <h3 className="font-heading text-xl">What the numbers mean</h3>
@@ -565,20 +595,7 @@ function Risk({ run }: { run: MeasuredRun }) {
         <Definition term="Accuracy" text="Labelled hits whose decision matches the label. Unavailable. Workload counts below are not accuracy." />
       </dl>
       <h3 className="font-heading text-xl">This recorded run</h3>
-      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-        {run.hits} hits in output/dev.jsonl. These counts are workload, not a judging score. The resolver was not timed,
-        so there is no seconds-per-hit figure.
-      </p>
-      <div className="flex h-3 overflow-hidden border border-border" aria-hidden="true">
-        <span className="bg-clear" style={{ width: `${(run.decisions.different / total) * 100}%` }} />
-        <span className="bg-confirm" style={{ width: `${(run.decisions.same / total) * 100}%` }} />
-        <span className="bg-review" style={{ width: `${(run.decisions.review / total) * 100}%` }} />
-      </div>
-      <dl className="grid gap-3 sm:grid-cols-3" data-testid="workload-counts">
-        <Stat value={String(run.decisions.different)} label="Cleared" note="DIFFERENT_ENTITY" />
-        <Stat value={String(run.decisions.same)} label="Confirmed" note="SAME_ENTITY" />
-        <Stat value={String(run.decisions.review)} label="Review" note="a person opens these" />
-      </dl>
+      <CombinedWorkload fallbackHits={run.hits} />
       <h3 className="font-heading text-xl">Reason codes on this run</h3>
       <ul className="grid gap-1 text-sm">
         {run.reasonCodes.map((item) => (

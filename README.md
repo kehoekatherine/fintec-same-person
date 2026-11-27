@@ -4,6 +4,19 @@ A bank screening system has already matched customers to watchlist profiles. Mos
 
 A contradiction clears the hit. Agreement on the required facts confirms it. Everything else stays for review. The rules make that decision. A model does not.
 
+## Public desk
+
+The desk is published with GitHub Pages:
+
+- Queue: <https://kehoekatherine.github.io/fintec-same-person/>
+- One hit, opened under its row: <https://kehoekatherine.github.io/fintec-same-person/?hit=H-E319FE>
+
+`?hit=` is the hit id. `?queue=upload` is the file added in the browser. Those query parameters are the address, so a link, the back button, and the forward button land on the same view. The site does not use path routes.
+
+The public desk shows the recorded decisions in `output/dev.jsonl`. It does not include the customer source files, it does not re-run the resolver, and it does not call a model. Name, date of birth, and country on an opened hit are the values the resolver already compared. A `.csv`, `.json`, or `.jsonl` file that already has a decision on every row can be added in the browser. A zip of source files, and a file with no decisions, need the local desk.
+
+`.github/workflows/pages.yml` builds that site on a push to `main` and deploys it with GitHub Actions (`actions/deploy-pages`). The base path is the repository name, so the same build works at `/fintec-same-person/` or `/same-person/`. Pages has to use **Settings → Pages → Build and deployment → Source: GitHub Actions**. The workflow also asks `actions/configure-pages` to turn that source on. If the URL 404s, that switch has not been turned on, or the workflow has not run on `main` yet.
+
 ## Architecture
 
 ```text
@@ -59,7 +72,7 @@ On the desk, add the folder as a `.zip`, or as one JSON bundle whose keys are th
 
 If a dataset is already on the machine, the desk can open it. It is named as the dataset that was found locally. It is not built into the desk. If no dataset is there, the page asks you to add one. It does not fail with a server error.
 
-The published desk does not open a development folder that was left on a build machine. Add the dataset you want scored.
+The published desk does not open a development folder that was left on a build machine. It shows the recorded run bundled from `output/dev.jsonl`. Scoring a new folder still needs the local desk.
 
 ## Metrics
 
@@ -102,6 +115,19 @@ npm run dev
 ```
 
 The dev server listens on port 4317. Open http://127.0.0.1:4317
+
+Build the static site the Pages workflow publishes. The default base path is `/fintec-same-person/`. Set `PAGES_BASE_PATH` to the repository name when that name is different.
+
+```sh
+cd web
+PAGES_BASE_PATH=/fintec-same-person npm run build:pages
+mkdir -p /tmp/pages-root
+rm -rf /tmp/pages-root/fintec-same-person
+cp -a out /tmp/pages-root/fintec-same-person
+python3 -m http.server 4318 --directory /tmp/pages-root
+```
+
+Open http://127.0.0.1:4318/fintec-same-person/ . `build:pages` writes `web/out`. `npm run dev` is unchanged and still serves the local API on port 4317.
 
 Score a folder from the command line:
 

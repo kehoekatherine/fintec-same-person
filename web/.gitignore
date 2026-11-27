@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+/public/demo/
+/.api-parked/
 
 # production
 /build

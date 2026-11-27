@@ -11,7 +11,10 @@ import { QueueSwitch } from "@/components/queue-switch";
 import { ResultsTable } from "@/components/results-table";
 import { RunMetricsLine } from "@/components/run-metrics";
 import { UploadControl } from "@/components/upload-control";
+import { DeskError } from "@/lib/errors";
 import { explainRow } from "@/lib/explanation";
+import { developmentUrl, staticDesk } from "@/lib/public-base";
+import { readRecordedUpload } from "@/lib/recorded-results";
 import type { DeskFailure, FilterId, QueueId, ResultPayload } from "@/lib/types";
 import { uploadRejection } from "@/lib/upload-file";
 
@@ -87,71 +90,40 @@ export function Desk() {
     }
   }, [applyParams, dev, devStatus, hitParam, queue, upload]);
 
+  const applyDevelopment = useCallback((result: DevelopmentRead) => {
+    if (result.status === "empty") {
+      setDev(null);
+      setDevStatus("empty");
+      setDevError(null);
+      return;
+    }
+    if (result.status === "error") {
+      setDev(null);
+      setDevStatus("error");
+      setDevError(result.error);
+      return;
+    }
+    setDev(result.payload);
+    setDevStatus("ready");
+    setDevError(null);
+  }, []);
+
   const loadDev = useCallback(async () => {
     setDevStatus("loading");
     setDevError(null);
-    try {
-      const response = await fetch("/api/development", { cache: "no-store" });
-      const body = (await response.json()) as ResultPayload & DeskFailure;
-      if (response.status === 404) {
-        setDev(null);
-        setDevStatus("empty");
-        setDevError(null);
-        return;
-      }
-      if (!response.ok || !body.rows) {
-        setDev(null);
-        setDevStatus("error");
-        setDevError({
-          error: body.error || "The development run could not be read.",
-          detail: body.detail,
-        });
-        return;
-      }
-      setDev(body);
-      setDevStatus("ready");
-    } catch {
-      setDev(null);
-      setDevStatus("error");
-      setDevError({ error: "The desk could not read the development run." });
-    }
-  }, []);
+    applyDevelopment(await readDevelopment());
+  }, [applyDevelopment]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      try {
-        const response = await fetch("/api/development", { cache: "no-store" });
-        const body = (await response.json()) as ResultPayload & DeskFailure;
-        if (cancelled) return;
-        if (response.status === 404) {
-          setDev(null);
-          setDevStatus("empty");
-          setDevError(null);
-          return;
-        }
-        if (!response.ok || !body.rows) {
-          setDev(null);
-          setDevStatus("error");
-          setDevError({
-            error: body.error || "The development run could not be read.",
-            detail: body.detail,
-          });
-          return;
-        }
-        setDev(body);
-        setDevStatus("ready");
-      } catch {
-        if (cancelled) return;
-        setDev(null);
-        setDevStatus("error");
-        setDevError({ error: "The desk could not read the development run." });
-      }
+      const result = await readDevelopment();
+      if (!cancelled) applyDevelopment(result);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyDevelopment]);
 
   const openQueue = useCallback(
     (next: QueueId) => {
@@ -175,24 +147,17 @@ export function Desk() {
       setUploadBusy(true);
       setUploadError(null);
       try {
-        const body = new FormData();
-        body.set("file", file);
-        const response = await fetch("/api/upload", { method: "POST", body });
-        const payload = (await response.json()) as ResultPayload & DeskFailure;
-        if (!response.ok || !payload.rows) {
-          setUploadError({
-            error: payload.error || "The file could not be added.",
-            detail: payload.detail,
-          });
-          return;
-        }
+        const payload = staticDesk() ? await readRecordedUpload(file) : await postUpload(file);
         setUpload(payload);
         setUploadQuery("");
         setUploadFilter("all");
         setQueue("upload");
         applyParams({ queue: "upload", hit: null });
-      } catch {
-        setUploadError({ error: "The desk could not read that file." });
+      } catch (error) {
+        setUploadError({
+          error: error instanceof Error ? error.message : "The desk could not read that file.",
+          detail: error instanceof DeskError ? error.detail : undefined,
+        });
       } finally {
         setUploadBusy(false);
       }
@@ -260,6 +225,42 @@ export function Desk() {
   );
 }
 
+type DevelopmentRead =
+  | { status: "empty" }
+  | { status: "error"; error: DeskFailure }
+  | { status: "ready"; payload: ResultPayload };
+
+async function readDevelopment(): Promise<DevelopmentRead> {
+  try {
+    const response = await fetch(developmentUrl(), { cache: "no-store" });
+    const body = (await response.json()) as ResultPayload & DeskFailure;
+    if (response.status === 404) return { status: "empty" };
+    if (!response.ok || !body.rows) {
+      return {
+        status: "error",
+        error: {
+          error: body.error || "The development run could not be read.",
+          detail: body.detail,
+        },
+      };
+    }
+    return { status: "ready", payload: body };
+  } catch {
+    return { status: "error", error: { error: "The desk could not read the development run." } };
+  }
+}
+
+async function postUpload(file: File): Promise<ResultPayload> {
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetch("/api/upload", { method: "POST", body });
+  const payload = (await response.json()) as ResultPayload & DeskFailure;
+  if (!response.ok || !payload.rows) {
+    throw new DeskError(payload.error || "The file could not be added.", { detail: payload.detail, status: response.status });
+  }
+  return payload;
+}
+
 function DevQueue({
   status,
   error,
@@ -293,8 +294,9 @@ function DevQueue({
       <div data-testid="empty" className="border border-border bg-card px-4 py-6">
         <h2 className="font-heading text-xl">Add a dataset</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          No dataset is loaded. Add a zip of the screening files, or one JSON bundle that contains them. The desk does
-          not include a built-in dataset.
+          {staticDesk()
+            ? "The recorded development run did not load. Reload the page, or add a file that already has a decision on every row."
+            : "No dataset is loaded. Add a zip of the screening files, or one JSON bundle that contains them. The desk does not include a built-in dataset."}
         </p>
       </div>
     );

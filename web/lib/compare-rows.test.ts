@@ -9,6 +9,7 @@ import {
   customerAbsenceMessage,
   dobStatus,
   entityRow,
+  factsForRecordedComparison,
   otherMatching,
   rowsFromStored,
 } from "./compare-rows.ts";
@@ -19,6 +20,27 @@ const stored: Comparison = {
   dateOfBirth: { customer: "1990-01-02", hit: "1990", status: "match" },
   country: { customer: "GB", hit: "United Kingdom", status: "match" },
 };
+
+test("a recorded comparison is shown when the customer file is not published", () => {
+  const facts = factsForRecordedComparison(stored);
+  assert.equal(facts.packPresent, true);
+  assert.equal(facts.customerMessage, null);
+  assert.deepEqual(
+    comparisonRows({
+      packPresent: facts.packPresent,
+      hitPresent: facts.hitPresent,
+      customerInFile: facts.customerInFile,
+      stored,
+      core: facts.core,
+      city: facts.city,
+      entity: facts.entity,
+    }).map((row) => row.label),
+    ["Name", "Date of birth", "Country", "Entity type"],
+  );
+  const missing = factsForRecordedComparison(null);
+  assert.equal(missing.packPresent, false);
+  assert.equal(missing.customerMessage, CUSTOMER_FILE_ABSENT);
+});
 
 test("stored comparison keeps Match, Different, and Undefined", () => {
   const rows = rowsFromStored({

@@ -11,6 +11,7 @@ import { useClusterFit } from "@/components/use-cluster-fit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { biasRiskForRow } from "@/lib/bias-risk";
+import type { ClusterHit } from "@/lib/cluster-fit";
 import { comparisonRows, factsForRecordedComparison } from "@/lib/compare-rows";
 import { actionFor } from "@/lib/explanation";
 import { DECISION_LABEL, DECISION_MEANING, reasonLabel } from "@/lib/labels";
@@ -28,6 +29,15 @@ export function CaseAnalysis({
   onHit: (hitId: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const fitted = useClusterFit();
+  const escalations = useMemo(() => {
+    const found = new Map<string, ClusterHit>();
+    if (fitted.status !== "ready") return found;
+    for (const hit of fitted.fit.hits) {
+      if (hit.escalation.sentToReview) found.set(hit.hitId, hit);
+    }
+    return found;
+  }, [fitted]);
   const filtered = useMemo(() => filterHits(rows, query), [query, rows]);
   const index = hitId ? rows.findIndex((row) => row.hitId === hitId) : -1;
   const row = index >= 0 ? rows[index] : null;
@@ -48,6 +58,7 @@ export function CaseAnalysis({
         <ul className="grid max-h-80 gap-1 overflow-auto lg:max-h-[calc(100dvh-16rem)]" aria-label="Hits">
           {filtered.map((item) => {
             const selected = item.hitId === hitId;
+            const escalation = escalations.get(item.hitId);
             return (
               <li key={item.hitId}>
                 <button
@@ -66,6 +77,11 @@ export function CaseAnalysis({
                     <Badge variant="outline" className={cn("h-5", DECISION_BADGE[item.decision])}>
                       {DECISION_LABEL[item.decision]}
                     </Badge>
+                    {escalation ? (
+                      <Badge variant="outline" className="h-5 border-review/40 bg-review/15 text-review">
+                        {escalation.escalation.priority ? "Priority — sent to review" : "Sent to review"}
+                      </Badge>
+                    ) : null}
                   </span>
                 </button>
               </li>
@@ -234,14 +250,16 @@ function ClusterOpinion({ hitId, onHit }: { hitId: string; onHit: (hitId: string
         Cluster {hit.cluster}, {hit.label}. Distance to the centre is {hit.distance}. The rules decision was not used
         to place this hit. This is not an accuracy.
       </p>
-      {hit.disagree ? (
+      {hit.escalation.sentToReview ? (
         <p className="mt-2 text-sm leading-6" data-testid="analysis-disagree">
-          {hit.disagree}
+          <Badge variant="outline" className="mr-2 h-5 border-review/40 bg-review/15 text-review">
+            {hit.escalation.priority ? "Priority — sent to review" : "Sent to review"}
+          </Badge>
+          {hit.escalation.reason} Combined outcome: review.
         </p>
       ) : (
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          No disagreement flag. A flag is only a cleared hit in a high-agreement cluster, or a confirmed hit in a
-          conflicting cluster.
+          The cluster call matches the rules, so the combined outcome stays the raw rules decision.
         </p>
       )}
       <h4 className="mt-3 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">

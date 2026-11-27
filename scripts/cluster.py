@@ -12,7 +12,10 @@ Writes web/public/demo/clusters.json.
 from __future__ import annotations
 
 import json
+import os
+import platform
 import re
+import time
 import unicodedata
 from pathlib import Path
 
@@ -152,12 +155,109 @@ def label_center(center: np.ndarray) -> str:
     return "mixed"
 
 
-def disagree(rules: str, label: str) -> str | None:
-    if rules == "DIFFERENT_ENTITY" and label == "high agreement":
-        return "The rules cleared this hit, and the cluster centre is high agreement."
-    if rules == "SAME_ENTITY" and label == "conflicting":
-        return "The rules confirmed this hit, and the cluster centre is conflicting."
-    return None
+# Cluster label → the rules word it is compared with. Not an accuracy label.
+CLUSTER_CALL = {
+    "high agreement": "SAME_ENTITY",
+    "conflicting": "DIFFERENT_ENTITY",
+    "mixed": "REVIEW",
+}
+RULE_WORD = {
+    "DIFFERENT_ENTITY": "cleared",
+    "SAME_ENTITY": "confirmed",
+    "REVIEW": "review",
+}
+
+
+def escalation_for(rules: str, label: str) -> dict:
+    call = CLUSTER_CALL.get(label)
+    if call is None or call == rules:
+        return {
+            "sentToReview": False,
+            "priority": False,
+            "type": None,
+            "reason": None,
+            "clusterCalls": call,
+            "combined": rules,
+        }
+    priority = rules == "DIFFERENT_ENTITY" and label in ("high agreement", "mixed")
+    kind = f"{RULE_WORD[rules]}_{label.replace(' ', '_')}"
+    reason = (
+        f"Rules {RULE_WORD[rules]}. The cluster is {label}, which maps to {RULE_WORD[call]}. "
+        "Sent to review. The raw rules decision is unchanged."
+    )
+    if priority:
+        reason = "Priority, to reduce a wrongful clearance. " + reason
+    return {
+        "sentToReview": True,
+        "priority": priority,
+        "type": kind,
+        "reason": reason,
+        "clusterCalls": call,
+        "combined": "REVIEW",
+    }
+
+
+def timing_block(fit_seconds: float, predict_seconds: float, n: int) -> dict:
+    total = fit_seconds + predict_seconds
+    return {
+        "fitSeconds": round(fit_seconds, 6),
+        "predictSeconds": round(predict_seconds, 6),
+        "totalSeconds": round(total, 6),
+        "perHitSeconds": round(total / n, 8),
+        "scaled200Seconds": round(total * 200 / n, 6),
+        "machine": platform.platform(),
+        "processor": platform.processor() or platform.machine(),
+        "cpuCount": os.cpu_count(),
+        "note": (
+            "Wall clock for one KMeans fit of the chosen k and one predict on the same scaled rows. "
+            "The search over k is not included. One process."
+        ),
+    }
+
+
+def agreement_block(hits: list[dict]) -> dict:
+    agree = sum(1 for hit in hits if hit["escalation"]["clusterCalls"] == hit["rules"])
+    n = len(hits)
+    return {
+        "agree": agree,
+        "n": n,
+        "percent": round(100 * agree / n, 2),
+        "mapping": "high agreement → confirmed, conflicting → cleared, mixed → review",
+        "note": "Agreement with the rules engine, not accuracy. There is no label file.",
+    }
+
+
+def workload_block(hits: list[dict]) -> dict:
+    def tally(key: str) -> dict:
+        counts = {"cleared": 0, "confirmed": 0, "review": 0}
+        word = {"DIFFERENT_ENTITY": "cleared", "SAME_ENTITY": "confirmed", "REVIEW": "review"}
+        for hit in hits:
+            counts[word[hit[key]]] += 1
+        return counts
+
+    by_type: dict[str, dict] = {}
+    for hit in hits:
+        escalation = hit["escalation"]
+        if not escalation["sentToReview"] or not escalation["type"]:
+            continue
+        bucket = by_type.setdefault(
+            escalation["type"],
+            {"type": escalation["type"], "priority": escalation["priority"], "count": 0, "changed": 0},
+        )
+        bucket["count"] += 1
+        if hit["rules"] != "REVIEW":
+            bucket["changed"] += 1
+    return {
+        "before": tally("rules"),
+        "after": tally("combined"),
+        "byType": sorted(by_type.values(), key=lambda item: (not item["priority"], -item["count"], item["type"])),
+        "flagged": sum(1 for hit in hits if hit["escalation"]["sentToReview"]),
+        "changed": sum(1 for hit in hits if hit["combined"] != hit["rules"]),
+        "note": (
+            "Combined outcome keeps the raw rules decision, except a disagreement is sent to review. "
+            "Priority is a rules clearance in a high-agreement or mixed cluster."
+        ),
+    }
 
 
 def tidy(value: float, digits: int = 4) -> float:
@@ -197,6 +297,15 @@ def main() -> None:
     labels = best_model.labels_.astype(int)
     centers_scaled = best_model.cluster_centers_
     centers = scaler.inverse_transform(centers_scaled)
+    clock = KMeans(n_clusters=int(best_k), n_init=10, random_state=SEED)
+    started = time.perf_counter()
+    clock.fit(scaled)
+    fit_seconds = time.perf_counter() - started
+    started = time.perf_counter()
+    predicted = clock.predict(scaled)
+    predict_seconds = time.perf_counter() - started
+    if not np.array_equal(predicted, labels):
+        raise SystemExit("timed fit did not reproduce the selected clusters")
 
     agg = AgglomerativeClustering(n_clusters=best_k, linkage="ward")
     agg_labels = agg.fit_predict(scaled)
@@ -262,7 +371,7 @@ def main() -> None:
                 if len(nearest) == 3:
                     break
             rules = rows[index]["decision"]
-            note = disagree(rules, label_of[cluster_id])
+            escalation = escalation_for(rules, label_of[cluster_id])
             comparison = rows[index]["comparison"]
             hits.append(
                 {
@@ -272,7 +381,9 @@ def main() -> None:
                     "label": label_of[cluster_id],
                     "distance": round(float(distances[index]), 4),
                     "rules": rules,
-                    "disagree": note,
+                    "combined": escalation["combined"],
+                    "disagree": escalation["reason"],
+                    "escalation": escalation,
                     "neighbors": [
                         {
                             "hitId": rows[other]["hit_id"],
@@ -301,6 +412,9 @@ def main() -> None:
             "indicators is at least 0.30. High agreement: that conflict test fails and mean Match is at least 0.55. "
             "Thin comparison: mean Match and mean Different are both under 0.25. Otherwise mixed."
         ),
+        "timing": timing_block(fit_seconds, predict_seconds, len(rows)),
+        "agreement": agreement_block(hits),
+        "rulesPlusCluster": workload_block(hits),
         "k": best_k,
         "silhouette": round(best_score, 4),
         "silhouetteByK": silhouette_by_k,
@@ -340,7 +454,11 @@ def main() -> None:
     print(
         f"k={best_k} silhouette={payload['silhouette']} "
         f"agglomerative={payload['agglomerative']['silhouette']} "
-        f"hdbscan_clusters={payload['hdbscan']['clusters']} -> {DEST.relative_to(ROOT)}"
+        f"hdbscan_clusters={payload['hdbscan']['clusters']} "
+        f"agree={payload['agreement']['agree']}/{payload['agreement']['n']} "
+        f"changed={payload['rulesPlusCluster']['changed']} "
+        f"fit={payload['timing']['fitSeconds']}s predict={payload['timing']['predictSeconds']}s "
+        f"-> {DEST.relative_to(ROOT)}"
     )
 
 

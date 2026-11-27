@@ -20,6 +20,15 @@ export type ClusterNeighbor = {
   name: string;
 };
 
+export type ClusterEscalation = {
+  sentToReview: boolean;
+  priority: boolean;
+  type: string | null;
+  reason: string | null;
+  clusterCalls: string | null;
+  combined: string;
+};
+
 export type ClusterHit = {
   hitId: string;
   name: string;
@@ -27,8 +36,52 @@ export type ClusterHit = {
   label: string;
   distance: number;
   rules: string;
+  combined: string;
   disagree: string | null;
+  escalation: ClusterEscalation;
   neighbors: ClusterNeighbor[];
+};
+
+export type ClusterTiming = {
+  fitSeconds: number;
+  predictSeconds: number;
+  totalSeconds: number;
+  perHitSeconds: number;
+  scaled200Seconds: number;
+  machine: string;
+  processor: string;
+  cpuCount: number | null;
+  note: string;
+};
+
+export type ClusterAgreement = {
+  agree: number;
+  n: number;
+  percent: number;
+  mapping: string;
+  note: string;
+};
+
+export type WorkloadCounts = {
+  cleared: number;
+  confirmed: number;
+  review: number;
+};
+
+export type EscalationTypeCount = {
+  type: string;
+  priority: boolean;
+  count: number;
+  changed: number;
+};
+
+export type RulesPlusCluster = {
+  before: WorkloadCounts;
+  after: WorkloadCounts;
+  byType: EscalationTypeCount[];
+  flagged: number;
+  changed: number;
+  note: string;
 };
 
 export type ClusterPoint = {
@@ -56,6 +109,9 @@ export type ClusterFit = {
   excluded: string[];
   exclusionNote: string;
   labelRule: string;
+  timing: ClusterTiming;
+  agreement: ClusterAgreement;
+  rulesPlusCluster: RulesPlusCluster;
   k: number;
   silhouette: number;
   silhouetteByK: { k: number; silhouette: number }[];
@@ -81,6 +137,11 @@ export function isClusterFit(value: unknown): value is ClusterFit {
     record.model === "sklearn.cluster.KMeans" &&
     typeof record.k === "number" &&
     typeof record.silhouette === "number" &&
+    !!record.timing &&
+    typeof (record.timing as { totalSeconds?: unknown }).totalSeconds === "number" &&
+    !!record.agreement &&
+    typeof (record.agreement as { agree?: unknown }).agree === "number" &&
+    !!record.rulesPlusCluster &&
     Array.isArray(record.clusters) &&
     Array.isArray(record.hits) &&
     Array.isArray(record.pca) &&

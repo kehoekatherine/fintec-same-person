@@ -73,6 +73,7 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
   const [outputTokens, setOutputTokens] = useState(400);
   const [gbpPerUsd, setGbpPerUsd] = useState(0.79);
   const [monthly, setMonthly] = useState(run.hits);
+  const fitted = useClusterFit();
   const rows = useMemo(
     () =>
       MODEL_PRICES.map((model) => ({
@@ -122,8 +123,11 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
         <Stat value={String(run.inputTokensP90)} label="Input tokens, p90" note="same estimate" />
         <Stat value={String(run.reasonTokensMean)} label="Reason tokens, mean" note="the rules text" />
       </dl>
+      <p className="max-w-3xl text-sm leading-6" data-testid="neither-better">
+        Neither the rules engine nor the k-means fit can be called better without labels.
+      </p>
       <div className="overflow-x-auto border border-border">
-        <table className="w-full min-w-[64rem] text-left text-sm">
+        <table className="w-full min-w-[72rem] text-left text-sm" data-testid="model-table">
           <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
             <tr>
               <th className="px-3 py-2 font-medium">Model</th>
@@ -136,6 +140,7 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
               <th className="px-3 py-2 font-medium">Latency / hit</th>
               <th className="px-3 py-2 font-medium">200 hits vs 30 min</th>
               <th className="px-3 py-2 font-medium">Measured accuracy</th>
+              <th className="px-3 py-2 font-medium">Agreement with rules</th>
             </tr>
           </thead>
           <tbody>
@@ -152,7 +157,8 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
               <td className="px-3 py-2">{gbp(0)}</td>
               <td className="px-3 py-2">Not measured</td>
               <td className="px-3 py-2">Not measured</td>
-              <td className="px-3 py-2">No labels in this repository</td>
+              <td className="px-3 py-2">not measurable — no label file</td>
+              <td className="px-3 py-2">Reference</td>
             </tr>
             {rows.map((row) => (
               <tr key={row.model.id} className="border-t border-border">
@@ -168,12 +174,15 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
                 <td className="px-3 py-2">{gbp(row.gbp * monthly)}</td>
                 <td className="px-3 py-2">{latency(row.seconds, row.model)}</td>
                 <td className="px-3 py-2">{twoHundred(row.seconds)}</td>
+                <td className="px-3 py-2">not measurable — no label file</td>
                 <td className="px-3 py-2">Not measured</td>
               </tr>
             ))}
+            {fitted.status === "ready" ? <KMeansRows fit={fitted.fit} /> : null}
           </tbody>
         </table>
       </div>
+      {fitted.status === "ready" ? <DisagreementList fit={fitted.fit} /> : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <BarChart
           title="GBP per 1,000 hits"
@@ -243,6 +252,120 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
 }
 
 const CLUSTER_COLOURS = ["#1d4e89", "#9f1239", "#0c7a43", "#b45309", "#6d28d9", "#0f766e", "#365314", "#0369a1"];
+
+function KMeansRows({ fit }: { fit: ClusterFit }) {
+  const clock = fit.timing;
+  const inside = clock.scaled200Seconds <= 1800;
+  return (
+    <>
+      <tr className="border-t border-border" data-testid="kmeans-row">
+        <td className="px-3 py-2">
+          <strong>Unsupervised k-means (k={fit.k})</strong>
+          <div className="text-xs text-muted-foreground">
+            Fit {clock.fitSeconds}s, predict {clock.predictSeconds}s, wall clock, {clock.machine}, {clock.cpuCount}{" "}
+            CPUs. {clock.note}
+          </div>
+        </td>
+        <td className="px-3 py-2">0</td>
+        <td className="px-3 py-2">0</td>
+        <td className="px-3 py-2">{gbp(0, 4)}</td>
+        <td className="px-3 py-2">{gbp(0)}</td>
+        <td className="px-3 py-2">{gbp(0)}</td>
+        <td className="px-3 py-2">{gbp(0)}</td>
+        <td className="px-3 py-2">{clock.perHitSeconds} s measured</td>
+        <td className="px-3 py-2">
+          {clock.scaled200Seconds} s · {inside ? "inside" : "over"} 30 min on this arithmetic
+        </td>
+        <td className="px-3 py-2">not measurable — no label file</td>
+        <td className="px-3 py-2">
+          {fit.agreement.percent}% ({fit.agreement.agree} of {fit.agreement.n}). {fit.agreement.note}
+        </td>
+      </tr>
+      <tr className="border-t border-border" data-testid="escalation-row">
+        <td className="px-3 py-2">
+          <strong>Rules + k-means escalation</strong>
+          <div className="text-xs text-muted-foreground">
+            Raw rules decision kept. A disagreement is sent to review. Workload {fit.rulesPlusCluster.before.cleared}/
+            {fit.rulesPlusCluster.before.confirmed}/{fit.rulesPlusCluster.before.review} →{" "}
+            {fit.rulesPlusCluster.after.cleared}/{fit.rulesPlusCluster.after.confirmed}/
+            {fit.rulesPlusCluster.after.review}. {fit.rulesPlusCluster.changed} moved. Rules clock was not measured;
+            the clustering clock is the row above.
+          </div>
+        </td>
+        <td className="px-3 py-2">0</td>
+        <td className="px-3 py-2">0</td>
+        <td className="px-3 py-2">{gbp(0, 4)}</td>
+        <td className="px-3 py-2">{gbp(0)}</td>
+        <td className="px-3 py-2">{gbp(0)}</td>
+        <td className="px-3 py-2">{gbp(0)}</td>
+        <td className="px-3 py-2">{clock.perHitSeconds} s clustering; rules not measured</td>
+        <td className="px-3 py-2">
+          {clock.scaled200Seconds} s clustering · {inside ? "inside" : "over"} 30 min on this arithmetic
+        </td>
+        <td className="px-3 py-2">not measurable — no label file</td>
+        <td className="px-3 py-2">Escalation, not a score. {fit.rulesPlusCluster.note}</td>
+      </tr>
+    </>
+  );
+}
+
+function DisagreementList({ fit }: { fit: ClusterFit }) {
+  const rows = [...fit.hits.filter((hit) => hit.escalation.sentToReview)].sort((left, right) => {
+    if (left.escalation.priority !== right.escalation.priority) return left.escalation.priority ? -1 : 1;
+    if ((left.rules === "REVIEW") !== (right.rules === "REVIEW")) return left.rules === "REVIEW" ? 1 : -1;
+    return left.hitId.localeCompare(right.hitId);
+  });
+  return (
+    <section className="border border-review/50 bg-review/10 px-4 py-4" data-testid="disagreements">
+      <h3 className="font-heading text-xl">Disagreements — sent to review</h3>
+      <p className="mt-2 max-w-3xl text-sm leading-6">
+        {fit.rulesPlusCluster.flagged} disagreements. {fit.rulesPlusCluster.changed} change the combined outcome to
+        review. The other {fit.rulesPlusCluster.flagged - fit.rulesPlusCluster.changed} were already review. Workload{" "}
+        {fit.rulesPlusCluster.before.cleared} cleared, {fit.rulesPlusCluster.before.confirmed} confirmed,{" "}
+        {fit.rulesPlusCluster.before.review} review → {fit.rulesPlusCluster.after.cleared} cleared,{" "}
+        {fit.rulesPlusCluster.after.confirmed} confirmed, {fit.rulesPlusCluster.after.review} review. Mapping:{" "}
+        {fit.agreement.mapping}. This is not accuracy.
+      </p>
+      <ul className="mt-2 grid gap-1 text-sm">
+        {fit.rulesPlusCluster.byType.map((item) => (
+          <li key={item.type}>
+            {item.priority ? "Priority. " : ""}
+            {item.type}: {item.count} flagged, {item.changed} moved to review.
+          </li>
+        ))}
+      </ul>
+      <div className="mt-3 max-h-80 overflow-auto border border-border bg-card">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
+            <tr>
+              <th className="px-3 py-2 font-medium">Hit</th>
+              <th className="px-3 py-2 font-medium">Rules</th>
+              <th className="px-3 py-2 font-medium">Cluster</th>
+              <th className="px-3 py-2 font-medium">Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((hit) => (
+              <tr key={hit.hitId} className={hit.escalation.priority ? "bg-review/15" : undefined}>
+                <td className="px-3 py-2">
+                  <a className="underline" href={`?view=analysis&hit=${encodeURIComponent(hit.hitId)}`}>
+                    {hit.name || hit.hitId}
+                  </a>
+                  <div className="font-mono text-xs text-muted-foreground">{hit.hitId}</div>
+                </td>
+                <td className="px-3 py-2">{hit.rules}</td>
+                <td className="px-3 py-2">
+                  {hit.cluster} {hit.label}
+                </td>
+                <td className="px-3 py-2">{hit.escalation.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 function Unsupervised({ run }: { run: MeasuredRun }) {
   const fitted = useClusterFit();

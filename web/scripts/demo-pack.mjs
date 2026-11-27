@@ -43,6 +43,13 @@ export function measureRecordedRun(text) {
   const reasons = [];
   const decisions = { different: 0, same: 0, review: 0 };
   const codes = new Map();
+  const pairFields = {
+    name: emptyStatuses(),
+    dateOfBirth: emptyStatuses(),
+    country: emptyStatuses(),
+  };
+  const agreeing = [0, 0, 0, 0];
+  let pairs = 0;
   for (const line of lines) {
     const parsed = JSON.parse(line);
     chars.push(line.length);
@@ -53,6 +60,11 @@ export function measureRecordedRun(text) {
     else if (parsed.decision === "REVIEW") decisions.review += 1;
     const code = typeof parsed.reason_code === "string" ? parsed.reason_code : "";
     if (code) codes.set(code, (codes.get(code) ?? 0) + 1);
+    const counted = countPair(parsed.comparison, pairFields);
+    if (counted != null) {
+      pairs += 1;
+      agreeing[counted] += 1;
+    }
   }
   const sortedChars = [...chars].sort((a, b) => a - b);
   const sortedReasons = [...reasons].sort((a, b) => a - b);
@@ -76,7 +88,38 @@ export function measureRecordedRun(text) {
     reasonCodes,
     resolverSeconds: null,
     labelsPresent: false,
+    pairFeatures: {
+      pairs,
+      note:
+        "Each output/dev.jsonl line is one customer–hit comparison the rules already stored. The customer file is not here, so this is not a Fellegi–Sunter run and not a clustering of customers. It only counts the three stored statuses. Labels are not used. It does not check the rules.",
+      name: pairFields.name,
+      dateOfBirth: pairFields.dateOfBirth,
+      country: pairFields.country,
+      fieldsAgreeing: agreeing.map((count, agree) => ({ agree, count })),
+    },
   };
+}
+
+function emptyStatuses() {
+  return { match: 0, different: 0, undefined: 0 };
+}
+
+function countPair(comparison, pairFields) {
+  if (!comparison || typeof comparison !== "object") return null;
+  const name = statusOf(comparison.name);
+  const dateOfBirth = statusOf(comparison.date_of_birth);
+  const country = statusOf(comparison.country);
+  if (!name || !dateOfBirth || !country) return null;
+  pairFields.name[name] += 1;
+  pairFields.dateOfBirth[dateOfBirth] += 1;
+  pairFields.country[country] += 1;
+  return [name, dateOfBirth, country].filter((status) => status === "match").length;
+}
+
+function statusOf(value) {
+  if (!value || typeof value !== "object") return null;
+  if (value.status === "match" || value.status === "different" || value.status === "undefined") return value.status;
+  return null;
 }
 
 function mean(values) {

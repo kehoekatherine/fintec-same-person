@@ -1,6 +1,6 @@
 export type DeskView = "about" | "analysis" | "cost";
 
-export type CostSection = "models" | "risk";
+export type CostSection = "models" | "unsupervised" | "risk";
 
 /**
  * No `view` opens About. `?hit=` with no view opens case analysis.
@@ -18,6 +18,7 @@ export function deskView(value: string | null, hit: string | null = null): DeskV
 /** `?section=classical` and `?section=ml` have no page. They use the language-model section. */
 export function costSection(value: string | null): CostSection {
   if (value === "risk") return "risk";
+  if (value === "unsupervised") return "unsupervised";
   return "models";
 }
 

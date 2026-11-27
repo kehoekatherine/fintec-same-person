@@ -21,6 +21,7 @@ test("a removed cost section falls back to language models", () => {
   assert.equal(costSection("classical"), "models");
   assert.equal(costSection("ml"), "models");
   assert.equal(costSection("risk"), "risk");
+  assert.equal(costSection("unsupervised"), "unsupervised");
   assert.deepEqual(legacyAddress(null, null, "H-1"), { view: "analysis" });
   assert.deepEqual(legacyAddress("queue", null, null), { view: null, hit: null, section: null });
   assert.deepEqual(legacyAddress("cost", "classical", null), { section: null });

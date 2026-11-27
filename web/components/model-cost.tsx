@@ -13,6 +13,7 @@ import { reasonLabel } from "@/lib/labels";
 
 const SECTIONS: { id: CostSection; label: string }[] = [
   { id: "models", label: "Language models" },
+  { id: "unsupervised", label: "Unsupervised / clustering" },
   { id: "risk", label: "Risk" },
 ];
 
@@ -60,6 +61,7 @@ export function ModelCost({
         </p>
       ) : null}
       {measured.status === "ready" && section === "models" ? <LanguageModels run={measured.run} /> : null}
+      {measured.status === "ready" && section === "unsupervised" ? <Unsupervised run={measured.run} /> : null}
       {measured.status === "ready" && section === "risk" ? <Risk run={measured.run} /> : null}
     </div>
   );
@@ -235,6 +237,117 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
         ))}
       </ol>
     </section>
+  );
+}
+
+function Unsupervised({ run }: { run: MeasuredRun }) {
+  const features = run.pairFeatures;
+  const maxAgree = features ? Math.max(...features.fieldsAgreeing.map((row) => row.count), 1) : 1;
+  return (
+    <section data-testid="cost-unsupervised" className="grid gap-4">
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+        Same-person resolution can be done without labels. Nothing in this section was fitted, and no accuracy is
+        shown. This repository has no label file, so accuracy cannot be measured.
+      </p>
+      <div className="grid gap-3">
+        <article className="border border-border bg-card px-4 py-4">
+          <h3 className="font-heading text-xl">Fellegi–Sunter linkage</h3>
+          <p className="mt-2 text-sm leading-6">
+            A probabilistic record linkage gives each compared field an m weight (how often the field agrees when the
+            pair is the same entity) and a u weight (how often it agrees when the pair is not). Those weights can be
+            estimated by expectation–maximisation when there are no labels. Splink is one implementation of that
+            approach. Blocking keeps the comparison on fields that are actually present, such as a name part, a birth
+            year, or a country, instead of comparing every record with every other record.
+          </p>
+        </article>
+        <article className="border border-border bg-card px-4 py-4">
+          <h3 className="font-heading text-xl">Clustering the linked pairs</h3>
+          <p className="mt-2 text-sm leading-6">
+            Linked pairs can be gathered into entities. One way is connected components, or agglomerative clustering,
+            on the pairwise similarity. Another is DBSCAN or HDBSCAN on embeddings of the field similarities. The
+            published file does not contain the customer graph, so neither grouping was run.
+          </p>
+        </article>
+        <article className="border border-border bg-card px-4 py-4">
+          <h3 className="font-heading text-xl">Where it would sit on this desk</h3>
+          <p className="mt-2 text-sm leading-6">
+            An unsupervised score could be placed next to the rules engine’s split of {run.decisions.different} cleared,{" "}
+            {run.decisions.same} confirmed, and {run.decisions.review} review. That would be a comparison of two
+            unlabelled outputs. It would not be an accuracy.
+          </p>
+        </article>
+        <article className="border border-border bg-card px-4 py-4">
+          <h3 className="font-heading text-xl">Cost</h3>
+          <p className="mt-2 text-sm leading-6">
+            CPU only, effectively £0 per decision, the same as the rules engine. No model is called. No unsupervised
+            job was timed. The only size on record is the {run.hits} decisions in output/dev.jsonl.
+          </p>
+        </article>
+      </div>
+      <h3 className="font-heading text-xl">What this file actually shows</h3>
+      {features ? (
+        <>
+          <p className="max-w-3xl text-sm leading-6" data-testid="pair-note">
+            {features.note}
+          </p>
+          <div className="overflow-x-auto border border-border">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Field</th>
+                  <th className="px-3 py-2 font-medium">Match</th>
+                  <th className="px-3 py-2 font-medium">Different</th>
+                  <th className="px-3 py-2 font-medium">Undefined</th>
+                </tr>
+              </thead>
+              <tbody>
+                <FieldRow label="Name" counts={features.name} />
+                <FieldRow label="Date of birth" counts={features.dateOfBirth} />
+                <FieldRow label="Country" counts={features.country} />
+              </tbody>
+            </table>
+          </div>
+          <figure className="border border-border bg-card px-4 py-4" data-testid="fields-agreeing">
+            <figcaption className="text-sm font-medium">
+              How many of the three stored fields are Match, across {features.pairs} pairs
+            </figcaption>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Unsupervised and unvalidated. Match is the status already written on the line. This is not an entity
+              cluster and not a score against a label.
+            </p>
+            <div className="mt-3 grid gap-2">
+              {features.fieldsAgreeing.map((row) => (
+                <div key={row.agree} className="grid grid-cols-[7rem_1fr_auto] items-center gap-2 text-xs">
+                  <span>
+                    {row.agree} {row.agree === 1 ? "field" : "fields"}
+                  </span>
+                  <span className="h-2 bg-muted">
+                    <span
+                      className="block h-2 bg-primary"
+                      style={{ width: `${Math.max(2, (row.count / maxAgree) * 100)}%` }}
+                    />
+                  </span>
+                  <span>{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </figure>
+        </>
+      ) : (
+        <p className="text-sm">The stored field counts are not in this file, so they are left blank.</p>
+      )}
+    </section>
+  );
+}
+
+function FieldRow({ label, counts }: { label: string; counts: { match: number; different: number; undefined: number } }) {
+  return (
+    <tr className="border-t border-border">
+      <th className="px-3 py-2 text-left font-medium">{label}</th>
+      <td className="px-3 py-2">{counts.match}</td>
+      <td className="px-3 py-2">{counts.different}</td>
+      <td className="px-3 py-2">{counts.undefined}</td>
+    </tr>
   );
 }
 

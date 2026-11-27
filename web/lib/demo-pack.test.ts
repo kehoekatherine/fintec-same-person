@@ -38,4 +38,9 @@ test("measured cost figures come from the recorded lines and do not invent a sco
   assert.equal(measured.inputTokensMean, Math.round(measured.charsMean / 4));
   assert.ok(measured.reasonTokensMean > 0);
   assert.ok(measured.reasonCodes.some((item) => item.code === "INSUFFICIENT_DATA" && item.count > 0));
+  const agreeing = measured.pairFeatures.fieldsAgreeing.reduce((sum, row) => sum + row.count, 0);
+  assert.equal(measured.pairFeatures.pairs, 819);
+  assert.equal(agreeing, 819);
+  assert.equal(measured.pairFeatures.fieldsAgreeing.find((row) => row.agree === 3)?.count, 77);
+  assert.equal(measured.pairFeatures.name.match, 642);
 });

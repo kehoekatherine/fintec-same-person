@@ -62,5 +62,42 @@
     }
   ],
   "resolverSeconds": null,
-  "labelsPresent": false
+  "labelsPresent": false,
+  "pairFeatures": {
+    "pairs": 819,
+    "note": "Each output/dev.jsonl line is one customer–hit comparison the rules already stored. The customer file is not here, so this is not a Fellegi–Sunter run and not a clustering of customers. It only counts the three stored statuses. Labels are not used. It does not check the rules.",
+    "name": {
+      "match": 642,
+      "different": 141,
+      "undefined": 36
+    },
+    "dateOfBirth": {
+      "match": 145,
+      "different": 99,
+      "undefined": 575
+    },
+    "country": {
+      "match": 404,
+      "different": 315,
+      "undefined": 100
+    },
+    "fieldsAgreeing": [
+      {
+        "agree": 0,
+        "count": 82
+      },
+      {
+        "agree": 1,
+        "count": 360
+      },
+      {
+        "agree": 2,
+        "count": 300
+      },
+      {
+        "agree": 3,
+        "count": 77
+      }
+    ]
+  }
 }

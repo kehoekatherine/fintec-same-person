@@ -9,6 +9,22 @@ export type MeasuredDecisions = {
   review: number;
 };
 
+export type StatusCounts = {
+  match: number;
+  different: number;
+  undefined: number;
+};
+
+/** Stored field statuses on the recorded pairs. Not a linkage run and not a label score. */
+export type PairFeatures = {
+  pairs: number;
+  note: string;
+  name: StatusCounts;
+  dateOfBirth: StatusCounts;
+  country: StatusCounts;
+  fieldsAgreeing: { agree: number; count: number }[];
+};
+
 /** Counts taken from output/dev.jsonl. Nulls are facts this repository does not have. */
 export type MeasuredRun = {
   hits: number;
@@ -26,6 +42,7 @@ export type MeasuredRun = {
   reasonCodes: ReasonCodeCount[];
   resolverSeconds: null;
   labelsPresent: false;
+  pairFeatures?: PairFeatures;
 };
 
 export function isMeasuredRun(value: unknown): value is MeasuredRun {

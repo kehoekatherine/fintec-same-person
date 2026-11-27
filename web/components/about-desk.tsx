@@ -166,6 +166,11 @@ export function AboutDesk({ rows, onHit }: { rows: ResultRow[]; onHit: (hitId: s
               <strong>The rules</strong> in system/resolve.py are what wrote the decisions. Token cost of that run is
               zero.
             </li>
+            <li>
+              <strong>Unsupervised linkage</strong> (Fellegi–Sunter weights estimated without labels, then clustering)
+              is described on Model cost. It was not run. It would be CPU only, £0 per decision, like the rules, and
+              accuracy still cannot be measured without labels.
+            </li>
           </ul>
         </Guide>
       </div>

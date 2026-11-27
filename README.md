@@ -12,9 +12,10 @@ The desk is published with GitHub Pages:
 - The same page by name: <https://kehoekatherine.github.io/fintec-same-person/?view=about>
 - Case analysis: <https://kehoekatherine.github.io/fintec-same-person/?view=analysis&hit=H-E319FE>
 - Model cost: <https://kehoekatherine.github.io/fintec-same-person/?view=cost>
+- Model cost, unsupervised: <https://kehoekatherine.github.io/fintec-same-person/?view=cost&section=unsupervised>
 - Model cost, risk: <https://kehoekatherine.github.io/fintec-same-person/?view=cost&section=risk>
 
-`?view=about` is the guide: how many hits, what the desk is, how to use it, how to read a case, the rules in brief, and model cost in brief. `?view=analysis` is where a hit is opened. `?view=cost` is language-model prices, and `?section=risk` is the matrix and the workload. `?section=classical` has no page and opens the language-model section. A link that is only `?hit=` opens that hit in case analysis. `?view=queue` does the same when it names a hit, and opens About otherwise. The site does not use path routes.
+`?view=about` is the guide: how many hits, what the desk is, how to use it, how to read a case, the rules in brief, and model cost in brief. `?view=analysis` is where a hit is opened. `?view=cost` is language-model prices. `?section=unsupervised` describes linkage and clustering without labels, and counts the field statuses already stored on the 819 lines. `?section=risk` is the matrix and the workload. `?section=classical` has no page and opens the language-model section. A link that is only `?hit=` opens that hit in case analysis. `?view=queue` does the same when it names a hit, and opens About otherwise. The site does not use path routes.
 
 Case analysis shows the recorded decision, the rule reason, the name, date of birth, and country already compared, closeness, bias, confidence, and the evidence ids. It does not show a transaction statement or the customer file. Model cost prices the recorded lines against the public list prices used on the alert-triage desk. Input tokens are characters in `output/dev.jsonl` divided by 4. Fitness, accuracy, unsafe clearance, and overfitting are unavailable: this repository has no label file. No classical model was trained. No model was called. The recorded file has no clock.
 

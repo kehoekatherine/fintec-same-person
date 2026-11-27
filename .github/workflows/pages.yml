@@ -28,6 +28,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Fit unsupervised clusters
+        run: |
+          python3 -m pip install scikit-learn
+          python3 scripts/cluster.py
       - name: Export the static desk
         working-directory: web
         env:

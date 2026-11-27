@@ -167,9 +167,9 @@ export function AboutDesk({ rows, onHit }: { rows: ResultRow[]; onHit: (hitId: s
               zero.
             </li>
             <li>
-              <strong>Unsupervised linkage</strong> (Fellegi–Sunter weights estimated without labels, then clustering)
-              is described on Model cost. It was not run. It would be CPU only, £0 per decision, like the rules, and
-              accuracy still cannot be measured without labels.
+              <strong>Unsupervised clustering</strong> is a k-means fit on the 819 stored comparisons. The rules
+              decision was not a feature. Model cost shows the chosen k, the silhouette, and the profiles. Accuracy
+              cannot be measured without labels. Cost is CPU only, £0 per decision.
             </li>
           </ul>
         </Guide>

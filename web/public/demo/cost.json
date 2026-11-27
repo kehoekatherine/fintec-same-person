@@ -1,0 +1,66 @@
+{
+  "hits": 819,
+  "method": "Characters in each recorded output/dev.jsonl line, divided by 4. This estimates tokens. It is not a provider tokenizer, and it is not the customer source folder, which is not in this repository.",
+  "charsMean": 782.5787545787546,
+  "charsP50": 766,
+  "charsP90": 877,
+  "reasonCharsMean": 227.16361416361417,
+  "inputTokensMean": 196,
+  "inputTokensP50": 192,
+  "inputTokensP90": 219,
+  "reasonTokensMean": 57,
+  "reasonTokensP50": 56,
+  "decisions": {
+    "different": 465,
+    "same": 122,
+    "review": 232
+  },
+  "reasonCodes": [
+    {
+      "code": "INSUFFICIENT_DATA",
+      "count": 217
+    },
+    {
+      "code": "LOCATION_MISMATCH",
+      "count": 216
+    },
+    {
+      "code": "NAME_MISMATCH_VERIFIED",
+      "count": 129
+    },
+    {
+      "code": "DOB_MISMATCH",
+      "count": 93
+    },
+    {
+      "code": "NAME_DOB_LOCATION_MATCH",
+      "count": 77
+    },
+    {
+      "code": "NAME_LOCATION_MATCH",
+      "count": 41
+    },
+    {
+      "code": "TEMPORAL_IMPOSSIBILITY",
+      "count": 22
+    },
+    {
+      "code": "AMBIGUOUS_CUSTOMER_RECORD",
+      "count": 15
+    },
+    {
+      "code": "DECEASED",
+      "count": 4
+    },
+    {
+      "code": "NAME_DOB_MATCH",
+      "count": 4
+    },
+    {
+      "code": "ENTITY_TYPE_MISMATCH",
+      "count": 1
+    }
+  ],
+  "resolverSeconds": null,
+  "labelsPresent": false
+}

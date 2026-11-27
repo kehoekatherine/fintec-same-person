@@ -9,9 +9,12 @@ A contradiction clears the hit. Agreement on the required facts confirms it. Eve
 The desk is published with GitHub Pages:
 
 - Queue: <https://kehoekatherine.github.io/fintec-same-person/>
-- One hit, opened under its row: <https://kehoekatherine.github.io/fintec-same-person/?hit=H-E319FE>
+- Case analysis: <https://kehoekatherine.github.io/fintec-same-person/?view=analysis&hit=H-E319FE>
+- Model cost: <https://kehoekatherine.github.io/fintec-same-person/?view=cost>
 
-`?hit=` is the hit id. `?queue=upload` is the file added in the browser. Those query parameters are the address, so a link, the back button, and the forward button land on the same view. The site does not use path routes.
+`?view=analysis` opens one hit. `?view=cost` opens model cost, and `?view=cost&section=classical` or `?section=risk` opens the other cost sections. `?hit=` on the queue still opens that row under the table. `?queue=upload` is the file added in the browser. Those query parameters are the address, so a link, the back button, and the forward button land on the same view. The site does not use path routes.
+
+Case analysis shows the recorded decision, the rule reason, the name, date of birth, and country already compared, closeness, bias, confidence, and the evidence ids. It does not show a transaction statement or the customer file. Model cost prices the recorded lines against the public list prices used on the alert-triage desk. Input tokens are characters in `output/dev.jsonl` divided by 4. Fitness, accuracy, unsafe clearance, overfitting, classical-model scores, and resolver time are stated as unavailable: this repository has no label file and the recorded run has no clock. No model was called.
 
 The public desk shows the recorded decisions in `output/dev.jsonl`. It does not include the customer source files, it does not re-run the resolver, and it does not call a model. Name, date of birth, and country on an opened hit are the values the resolver already compared. A `.csv`, `.json`, or `.jsonl` file that already has a decision on every row can be added in the browser. A zip of source files, and a file with no decisions, need the local desk.
 

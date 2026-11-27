@@ -5,12 +5,16 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { CaseAnalysis } from "@/components/case-analysis";
 import { CasePanel } from "@/components/case-window";
 import { DeskFrame, LoadingState } from "@/components/desk-frame";
+import { ModelCost } from "@/components/model-cost";
 import { QueueSwitch } from "@/components/queue-switch";
+import { ViewNav } from "@/components/view-nav";
 import { ResultsTable } from "@/components/results-table";
 import { RunMetricsLine } from "@/components/run-metrics";
 import { UploadControl } from "@/components/upload-control";
+import { costSection, deskView, type CostSection, type DeskView } from "@/lib/desk-view";
 import { DeskError } from "@/lib/errors";
 import { explainRow } from "@/lib/explanation";
 import { developmentUrl, staticDesk } from "@/lib/public-base";
@@ -41,6 +45,8 @@ export function Desk() {
   const [uploadQuery, setUploadQuery] = useState("");
   const [uploadFilter, setUploadFilter] = useState<FilterId>("all");
   const hitParam = searchParams.get("hit");
+  const view = deskView(searchParams.get("view"));
+  const section = costSection(searchParams.get("section"));
   const explanation = useMemo(() => {
     if (!hitParam) return null;
     if (queue === "upload") {
@@ -70,7 +76,7 @@ export function Desk() {
         else params.set(key, value);
       }
       const queryString = params.toString();
-      router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+      router.push(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
     },
     [pathname, router, searchParams],
   );
@@ -79,8 +85,36 @@ export function Desk() {
     applyParams({ hit: null });
   }, [applyParams]);
 
+  const activeRows = useMemo(
+    () => (queue === "upload" && upload ? upload.rows : (dev?.rows ?? [])),
+    [dev?.rows, queue, upload],
+  );
+
+  const openView = useCallback(
+    (next: DeskView) => {
+      if (next === "queue") {
+        applyParams({ view: null, section: null });
+        return;
+      }
+      if (next === "cost") {
+        applyParams({ view: "cost", section: null, hit: null });
+        return;
+      }
+      const hit = hitParam ?? activeRows[0]?.hitId ?? null;
+      applyParams({ view: "analysis", section: null, hit });
+    },
+    [activeRows, applyParams, hitParam],
+  );
+
+  const openSection = useCallback(
+    (next: CostSection) => {
+      applyParams({ view: "cost", section: next === "models" ? null : next, hit: null });
+    },
+    [applyParams],
+  );
+
   useEffect(() => {
-    if (!hitParam) return;
+    if (!hitParam || view !== "queue") return;
     if (queue === "dev" && devStatus === "ready" && !dev?.rows.some((row) => row.hitId === hitParam)) {
       applyParams({ hit: null });
       return;
@@ -88,7 +122,7 @@ export function Desk() {
     if (queue === "upload" && upload && !upload.rows.some((row) => row.hitId === hitParam)) {
       applyParams({ hit: null });
     }
-  }, [applyParams, dev, devStatus, hitParam, queue, upload]);
+  }, [applyParams, dev, devStatus, hitParam, queue, upload, view]);
 
   const applyDevelopment = useCallback((result: DevelopmentRead) => {
     if (result.status === "empty") {
@@ -175,13 +209,32 @@ export function Desk() {
   ) : null;
 
   return (
-    <DeskFrame notice={notice}>
+    <DeskFrame notice={view === "queue" ? notice : null}>
       <div className="mb-3 flex flex-col gap-2">
-        <QueueSwitch queue={queue} showUpload={Boolean(upload)} onQueue={openQueue} />
-        <UploadControl busy={uploadBusy} error={uploadError} onFile={(file) => void sendFile(file)} />
+        <ViewNav view={view} onView={openView} />
+        {view === "queue" ? (
+          <>
+            <QueueSwitch queue={queue} showUpload={Boolean(upload)} onQueue={openQueue} />
+            <UploadControl busy={uploadBusy} error={uploadError} onFile={(file) => void sendFile(file)} />
+          </>
+        ) : null}
       </div>
 
-      {queue === "dev" ? (
+      {view === "analysis" ? (
+        devStatus === "loading" && queue !== "upload" ? (
+          <LoadingState mode="table" />
+        ) : devStatus === "error" && queue !== "upload" ? (
+          <p className="text-sm" data-testid="analysis-error">
+            {devError?.error ?? "The recorded run could not be read."}
+          </p>
+        ) : (
+          <CaseAnalysis rows={activeRows} hitId={hitParam} onHit={(hit) => applyParams({ view: "analysis", hit })} />
+        )
+      ) : null}
+
+      {view === "cost" ? <ModelCost section={section} onSection={openSection} /> : null}
+
+      {view === "queue" && queue === "dev" ? (
         <DevQueue
           status={devStatus}
           error={devError}
@@ -201,7 +254,7 @@ export function Desk() {
         />
       ) : null}
 
-      {queue === "upload" && upload ? (
+      {view === "queue" && queue === "upload" && upload ? (
         <>
           <RunMetricsLine rows={upload.rows} labels={upload.labels} heldOutLabels={upload.heldOutLabels} />
           <ResultsTable

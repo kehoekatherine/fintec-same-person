@@ -28,10 +28,74 @@ export function payloadFromDevJsonl(text) {
 export async function writeDemoPack(repoRoot, webRoot) {
   const text = await readFile(path.join(repoRoot, "output", "dev.jsonl"), "utf8");
   const payload = payloadFromDevJsonl(text);
+  const measured = measureRecordedRun(text);
   const dest = path.join(webRoot, "public", "demo");
   await mkdir(dest, { recursive: true });
   await writeFile(path.join(dest, "development.json"), JSON.stringify(payload));
-  return payload;
+  await writeFile(path.join(dest, "cost.json"), `${JSON.stringify(measured, null, 2)}\n`);
+  return { payload, measured };
+}
+
+/** Character counts on the committed JSONL. Tokens are characters divided by 4, not a tokenizer. */
+export function measureRecordedRun(text) {
+  const lines = text.split("\n").filter((line) => line.trim());
+  const chars = [];
+  const reasons = [];
+  const decisions = { different: 0, same: 0, review: 0 };
+  const codes = new Map();
+  for (const line of lines) {
+    const parsed = JSON.parse(line);
+    chars.push(line.length);
+    const reason = typeof parsed.reason === "string" ? parsed.reason : "";
+    reasons.push(reason.length);
+    if (parsed.decision === "DIFFERENT_ENTITY") decisions.different += 1;
+    else if (parsed.decision === "SAME_ENTITY") decisions.same += 1;
+    else if (parsed.decision === "REVIEW") decisions.review += 1;
+    const code = typeof parsed.reason_code === "string" ? parsed.reason_code : "";
+    if (code) codes.set(code, (codes.get(code) ?? 0) + 1);
+  }
+  const sortedChars = [...chars].sort((a, b) => a - b);
+  const sortedReasons = [...reasons].sort((a, b) => a - b);
+  const reasonCodes = [...codes.entries()]
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+  return {
+    hits: lines.length,
+    method:
+      "Characters in each recorded output/dev.jsonl line, divided by 4. This estimates tokens. It is not a provider tokenizer, and it is not the customer source folder, which is not in this repository.",
+    charsMean: mean(chars),
+    charsP50: quantile(sortedChars, 0.5),
+    charsP90: quantile(sortedChars, 0.9),
+    reasonCharsMean: mean(reasons),
+    inputTokensMean: tokens(mean(chars)),
+    inputTokensP50: tokens(quantile(sortedChars, 0.5)),
+    inputTokensP90: tokens(quantile(sortedChars, 0.9)),
+    reasonTokensMean: tokens(mean(reasons)),
+    reasonTokensP50: tokens(quantile(sortedReasons, 0.5)),
+    decisions,
+    reasonCodes,
+    resolverSeconds: null,
+    labelsPresent: false,
+  };
+}
+
+function mean(values) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function quantile(sorted, p) {
+  if (sorted.length === 0) return 0;
+  const index = (sorted.length - 1) * p;
+  const low = Math.floor(index);
+  const high = Math.ceil(index);
+  if (low === high) return sorted[low];
+  const weight = index - low;
+  return sorted[low] * (1 - weight) + sorted[high] * weight;
+}
+
+function tokens(chars) {
+  return Math.round(chars / 4);
 }
 
 function rowFromRecord(parsed) {

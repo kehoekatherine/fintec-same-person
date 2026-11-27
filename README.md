@@ -8,13 +8,15 @@ A contradiction clears the hit. Agreement on the required facts confirms it. Eve
 
 The desk is published with GitHub Pages:
 
-- Queue: <https://kehoekatherine.github.io/fintec-same-person/>
+- About, the page the desk opens on: <https://kehoekatherine.github.io/fintec-same-person/>
+- The same page by name: <https://kehoekatherine.github.io/fintec-same-person/?view=about>
 - Case analysis: <https://kehoekatherine.github.io/fintec-same-person/?view=analysis&hit=H-E319FE>
 - Model cost: <https://kehoekatherine.github.io/fintec-same-person/?view=cost>
+- Model cost, risk: <https://kehoekatherine.github.io/fintec-same-person/?view=cost&section=risk>
 
-`?view=analysis` opens one hit. `?view=cost` opens model cost, and `?view=cost&section=classical` or `?section=risk` opens the other cost sections. `?hit=` on the queue still opens that row under the table. `?queue=upload` is the file added in the browser. Those query parameters are the address, so a link, the back button, and the forward button land on the same view. The site does not use path routes.
+`?view=about` is the guide: how many hits, what the desk is, how to use it, how to read a case, the rules in brief, and model cost in brief. `?view=analysis` is where a hit is opened. `?view=cost` is language-model prices, and `?section=risk` is the matrix and the workload. `?section=classical` has no page and opens the language-model section. A link that is only `?hit=` opens that hit in case analysis. `?view=queue` does the same when it names a hit, and opens About otherwise. The site does not use path routes.
 
-Case analysis shows the recorded decision, the rule reason, the name, date of birth, and country already compared, closeness, bias, confidence, and the evidence ids. It does not show a transaction statement or the customer file. Model cost prices the recorded lines against the public list prices used on the alert-triage desk. Input tokens are characters in `output/dev.jsonl` divided by 4. Fitness, accuracy, unsafe clearance, overfitting, classical-model scores, and resolver time are stated as unavailable: this repository has no label file and the recorded run has no clock. No model was called.
+Case analysis shows the recorded decision, the rule reason, the name, date of birth, and country already compared, closeness, bias, confidence, and the evidence ids. It does not show a transaction statement or the customer file. Model cost prices the recorded lines against the public list prices used on the alert-triage desk. Input tokens are characters in `output/dev.jsonl` divided by 4. Fitness, accuracy, unsafe clearance, and overfitting are unavailable: this repository has no label file. No classical model was trained. No model was called. The recorded file has no clock.
 
 The public desk shows the recorded decisions in `output/dev.jsonl`. It does not include the customer source files, it does not re-run the resolver, and it does not call a model. Name, date of birth, and country on an opened hit are the values the resolver already compared. A `.csv`, `.json`, or `.jsonl` file that already has a decision on every row can be added in the browser. A zip of source files, and a file with no decisions, need the local desk.
 
@@ -42,7 +44,7 @@ Watchlist Screening Desk (web/, port 4317)
 
 The output is one JSON line per hit: the hit and alert ids, a decision (`DIFFERENT_ENTITY`, `SAME_ENTITY`, or `REVIEW`), a reason code, the customer record id when one was resolved, the reason, the evidence ids, and the name, date of birth, and country already compared.
 
-The desk in `web/` is a view over one run. It does not contain the customer data. It shows the rows `system/run` wrote, and it can open one case under the clicked row. The customer file stays in the data folder the run was given.
+The desk in `web/` is a view over one run. It does not contain the customer data. Case analysis opens one hit from the rows `system/run` wrote. The customer file stays in the data folder the run was given.
 
 How a customer is resolved, how a hit is read, and how evidence is chosen is described in [system/README.md](system/README.md).
 

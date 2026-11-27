@@ -18,6 +18,7 @@ function pagesBasePath() {
 
 const basePath = pagesBasePath();
 
+await run("python3", [path.join(repoRoot, "scripts", "cluster.py")], process.env);
 await writeDemoPack(repoRoot, webRoot);
 await rm(parked, { recursive: true, force: true });
 await rename(apiDir, parked);

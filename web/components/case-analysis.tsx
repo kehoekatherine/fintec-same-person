@@ -7,6 +7,7 @@ import { ClosenessScore } from "@/components/case-assessment";
 import { CustomerHitCompare } from "@/components/customer-hit-compare";
 import { DECISION_BADGE, DECISION_RULE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
+import { useClusterFit } from "@/components/use-cluster-fit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { biasRiskForRow } from "@/lib/bias-risk";
@@ -153,6 +154,7 @@ function OpenedHit({
           <p className="mt-2 text-xs text-muted-foreground">Rule reasoning. No model was called for this hit.</p>
         </div>
       </section>
+      <ClusterOpinion hitId={row.hitId} onHit={onHit} />
       <section className="border border-border bg-card px-5 py-5" data-testid="analysis-compared">
         <h3 className="font-heading text-xl">Fields compared</h3>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -206,6 +208,59 @@ function OpenedHit({
         </p>
       </section>
     </article>
+  );
+}
+
+function ClusterOpinion({ hitId, onHit }: { hitId: string; onHit: (hitId: string) => void }) {
+  const fitted = useClusterFit();
+  if (fitted.status === "loading") {
+    return <p className="text-sm text-muted-foreground">Reading the unsupervised fit…</p>;
+  }
+  if (fitted.status === "error") {
+    return <p className="text-sm">The unsupervised fit could not be read.</p>;
+  }
+  const hit = fitted.fit.hits.find((item) => item.hitId === hitId);
+  if (!hit) {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="analysis-cluster-missing">
+        This hit is not in the k-means fit of output/dev.jsonl.
+      </p>
+    );
+  }
+  return (
+    <section className="border border-border bg-card px-5 py-5" data-testid="analysis-cluster">
+      <h3 className="font-heading text-xl">Unsupervised second opinion</h3>
+      <p className="mt-2 text-sm leading-6">
+        Cluster {hit.cluster}, {hit.label}. Distance to the centre is {hit.distance}. The rules decision was not used
+        to place this hit. This is not an accuracy.
+      </p>
+      {hit.disagree ? (
+        <p className="mt-2 text-sm leading-6" data-testid="analysis-disagree">
+          {hit.disagree}
+        </p>
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          No disagreement flag. A flag is only a cleared hit in a high-agreement cluster, or a confirmed hit in a
+          conflicting cluster.
+        </p>
+      )}
+      <h4 className="mt-3 text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">
+        Nearest in this cluster
+      </h4>
+      <ul className="mt-2 grid gap-1">
+        {hit.neighbors.map((neighbor) => (
+          <li key={neighbor.hitId}>
+            <button
+              type="button"
+              className="text-left text-sm underline"
+              onClick={() => onHit(neighbor.hitId)}
+            >
+              {neighbor.name || neighbor.hitId} ({neighbor.hitId}), distance {neighbor.distance}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

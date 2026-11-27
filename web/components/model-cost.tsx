@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useClusterFit } from "@/components/use-cluster-fit";
+import type { ClusterFit } from "@/lib/cluster-fit";
 import type { CostSection } from "@/lib/desk-view";
 import { isMeasuredRun, type MeasuredRun } from "@/lib/measured-run";
 import { CURRENCY_NOTE, MODEL_PRICES, OUTPUT_TOKENS_NOTE, PRICE_CHECKED, caseUsd, type ModelPrice } from "@/lib/model-prices";
@@ -240,114 +242,190 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
   );
 }
 
+const CLUSTER_COLOURS = ["#1d4e89", "#9f1239", "#0c7a43", "#b45309", "#6d28d9", "#0f766e", "#365314", "#0369a1"];
+
 function Unsupervised({ run }: { run: MeasuredRun }) {
-  const features = run.pairFeatures;
-  const maxAgree = features ? Math.max(...features.fieldsAgreeing.map((row) => row.count), 1) : 1;
+  const fitted = useClusterFit();
   return (
     <section data-testid="cost-unsupervised" className="grid gap-4">
       <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-        Same-person resolution can be done without labels. Nothing in this section was fitted, and no accuracy is
-        shown. This repository has no label file, so accuracy cannot be measured.
+        A k-means model was fitted to the {run.hits} stored comparisons. The rules decision was not a feature. This
+        repository has no label file, so accuracy cannot be measured. The cross-tab below is a comparison, not a score.
       </p>
-      <div className="grid gap-3">
-        <article className="border border-border bg-card px-4 py-4">
-          <h3 className="font-heading text-xl">Fellegi–Sunter linkage</h3>
-          <p className="mt-2 text-sm leading-6">
-            A probabilistic record linkage gives each compared field an m weight (how often the field agrees when the
-            pair is the same entity) and a u weight (how often it agrees when the pair is not). Those weights can be
-            estimated by expectation–maximisation when there are no labels. Splink is one implementation of that
-            approach. Blocking keeps the comparison on fields that are actually present, such as a name part, a birth
-            year, or a country, instead of comparing every record with every other record.
-          </p>
-        </article>
-        <article className="border border-border bg-card px-4 py-4">
-          <h3 className="font-heading text-xl">Clustering the linked pairs</h3>
-          <p className="mt-2 text-sm leading-6">
-            Linked pairs can be gathered into entities. One way is connected components, or agglomerative clustering,
-            on the pairwise similarity. Another is DBSCAN or HDBSCAN on embeddings of the field similarities. The
-            published file does not contain the customer graph, so neither grouping was run.
-          </p>
-        </article>
-        <article className="border border-border bg-card px-4 py-4">
-          <h3 className="font-heading text-xl">Where it would sit on this desk</h3>
-          <p className="mt-2 text-sm leading-6">
-            An unsupervised score could be placed next to the rules engine’s split of {run.decisions.different} cleared,{" "}
-            {run.decisions.same} confirmed, and {run.decisions.review} review. That would be a comparison of two
-            unlabelled outputs. It would not be an accuracy.
-          </p>
-        </article>
-        <article className="border border-border bg-card px-4 py-4">
-          <h3 className="font-heading text-xl">Cost</h3>
-          <p className="mt-2 text-sm leading-6">
-            CPU only, effectively £0 per decision, the same as the rules engine. No model is called. No unsupervised
-            job was timed. The only size on record is the {run.hits} decisions in output/dev.jsonl.
-          </p>
-        </article>
-      </div>
-      <h3 className="font-heading text-xl">What this file actually shows</h3>
-      {features ? (
-        <>
-          <p className="max-w-3xl text-sm leading-6" data-testid="pair-note">
-            {features.note}
-          </p>
-          <div className="overflow-x-auto border border-border">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Field</th>
-                  <th className="px-3 py-2 font-medium">Match</th>
-                  <th className="px-3 py-2 font-medium">Different</th>
-                  <th className="px-3 py-2 font-medium">Undefined</th>
-                </tr>
-              </thead>
-              <tbody>
-                <FieldRow label="Name" counts={features.name} />
-                <FieldRow label="Date of birth" counts={features.dateOfBirth} />
-                <FieldRow label="Country" counts={features.country} />
-              </tbody>
-            </table>
-          </div>
-          <figure className="border border-border bg-card px-4 py-4" data-testid="fields-agreeing">
-            <figcaption className="text-sm font-medium">
-              How many of the three stored fields are Match, across {features.pairs} pairs
-            </figcaption>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Unsupervised and unvalidated. Match is the status already written on the line. This is not an entity
-              cluster and not a score against a label.
-            </p>
-            <div className="mt-3 grid gap-2">
-              {features.fieldsAgreeing.map((row) => (
-                <div key={row.agree} className="grid grid-cols-[7rem_1fr_auto] items-center gap-2 text-xs">
-                  <span>
-                    {row.agree} {row.agree === 1 ? "field" : "fields"}
-                  </span>
-                  <span className="h-2 bg-muted">
-                    <span
-                      className="block h-2 bg-primary"
-                      style={{ width: `${Math.max(2, (row.count / maxAgree) * 100)}%` }}
-                    />
-                  </span>
-                  <span>{row.count}</span>
-                </div>
-              ))}
-            </div>
-          </figure>
-        </>
-      ) : (
-        <p className="text-sm">The stored field counts are not in this file, so they are left blank.</p>
-      )}
+      {fitted.status === "loading" ? <p className="text-sm text-muted-foreground">Reading the clustering…</p> : null}
+      {fitted.status === "error" ? (
+        <p className="text-sm">The clustering file could not be read. No silhouette is shown in its place.</p>
+      ) : null}
+      {fitted.status === "ready" ? <ClusterReport fit={fitted.fit} /> : null}
     </section>
   );
 }
 
-function FieldRow({ label, counts }: { label: string; counts: { match: number; different: number; undefined: number } }) {
+function ClusterReport({ fit }: { fit: ClusterFit }) {
   return (
-    <tr className="border-t border-border">
-      <th className="px-3 py-2 text-left font-medium">{label}</th>
-      <td className="px-3 py-2">{counts.match}</td>
-      <td className="px-3 py-2">{counts.different}</td>
-      <td className="px-3 py-2">{counts.undefined}</td>
-    </tr>
+    <div className="grid gap-4">
+      <article className="border border-border bg-card px-4 py-4" data-testid="cluster-model">
+        <h3 className="font-heading text-xl">Fitted model</h3>
+        <p className="mt-2 text-sm leading-6">
+          {fit.model}, k = {fit.k}, n_init = {fit.parameters.n_init}, random_state = {fit.parameters.random_state}.{" "}
+          {fit.scaler} is fit on the {fit.n} pairs before clustering. Silhouette on the scaled features is{" "}
+          {fit.silhouette}. k was the maximum silhouette for k from 2 to 8.
+        </p>
+        <p className="mt-2 text-sm leading-6">{fit.exclusionNote}</p>
+        <p className="mt-2 text-sm leading-6">
+          Features: {fit.features.join(", ")}. Cost is CPU only, £0 per decision, the same as the rules engine. No
+          language model is called.
+        </p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{fit.labelRule}</p>
+      </article>
+      <div className="overflow-x-auto border border-border">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
+            <tr>
+              <th className="px-3 py-2 font-medium">k</th>
+              {fit.silhouetteByK.map((row) => (
+                <th key={row.k} className="px-3 py-2 font-medium">
+                  {row.k}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-t border-border">
+              <th className="px-3 py-2 text-left font-medium">Silhouette</th>
+              {fit.silhouetteByK.map((row) => (
+                <td key={row.k} className="px-3 py-2">
+                  {row.silhouette}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="text-sm leading-6">
+        Agglomerative clustering (Ward, k = {fit.agglomerative.k}) has silhouette {fit.agglomerative.silhouette}.
+        HDBSCAN (min cluster size {fit.hdbscan.minClusterSize}, min samples {fit.hdbscan.minSamples}) found{" "}
+        {fit.hdbscan.clusters} clusters and {fit.hdbscan.noise} noise points.
+        {fit.hdbscan.silhouette != null ? ` Silhouette on the non-noise points is ${fit.hdbscan.silhouette}.` : ""}{" "}
+        {fit.hdbscan.silhouetteNote}
+      </p>
+      <h3 className="font-heading text-xl">Cluster profiles</h3>
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+        Each number is the inverse-scaled centre for that feature: the share of the cluster whose stored status is
+        Match or Different. Names are descriptive labels of that centre, not a judgement of the rules.
+      </p>
+      <div className="overflow-x-auto border border-border">
+        <table className="w-full min-w-[48rem] text-left text-sm" data-testid="cluster-profiles">
+          <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
+            <tr>
+              <th className="px-3 py-2 font-medium">Cluster</th>
+              <th className="px-3 py-2 font-medium">Label</th>
+              <th className="px-3 py-2 font-medium">Size</th>
+              <th className="px-3 py-2 font-medium">Name match</th>
+              <th className="px-3 py-2 font-medium">Date match</th>
+              <th className="px-3 py-2 font-medium">Country match</th>
+              <th className="px-3 py-2 font-medium">Name differs</th>
+              <th className="px-3 py-2 font-medium">Date differs</th>
+              <th className="px-3 py-2 font-medium">Country differs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fit.clusters.map((cluster) => (
+              <tr key={cluster.id} className="border-t border-border">
+                <td className="px-3 py-2">{cluster.id}</td>
+                <td className="px-3 py-2">{cluster.label}</td>
+                <td className="px-3 py-2">{cluster.size}</td>
+                <td className="px-3 py-2">{cluster.mean.nameMatch}</td>
+                <td className="px-3 py-2">{cluster.mean.dobMatch}</td>
+                <td className="px-3 py-2">{cluster.mean.countryMatch}</td>
+                <td className="px-3 py-2">{cluster.mean.nameDifferent}</td>
+                <td className="px-3 py-2">{cluster.mean.dobDifferent}</td>
+                <td className="px-3 py-2">{cluster.mean.countryDifferent}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h3 className="font-heading text-xl">Projection</h3>
+      <p className="text-sm leading-6 text-muted-foreground">
+        Two principal components of the scaled features, coloured by the k-means cluster. This is a view of the fit,
+        not a map of customers.
+      </p>
+      <ClusterScatter fit={fit} />
+      <h3 className="font-heading text-xl">Cluster against the rules</h3>
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+        The rules outcome was not used in fitting. This table only counts how the recorded decision falls inside each
+        cluster. It is not accuracy.
+      </p>
+      <div className="overflow-x-auto border border-border">
+        <table className="w-full text-left text-sm" data-testid="cluster-crosstab">
+          <thead className="bg-muted/50 text-xs tracking-wide text-muted-foreground uppercase">
+            <tr>
+              <th className="px-3 py-2 font-medium">Cluster</th>
+              <th className="px-3 py-2 font-medium">Label</th>
+              <th className="px-3 py-2 font-medium">Cleared</th>
+              <th className="px-3 py-2 font-medium">Confirmed</th>
+              <th className="px-3 py-2 font-medium">Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fit.crosstab.map((row) => (
+              <tr key={row.cluster} className="border-t border-border">
+                <td className="px-3 py-2">{row.cluster}</td>
+                <td className="px-3 py-2">{row.label}</td>
+                <td className="px-3 py-2">{row.cleared}</td>
+                <td className="px-3 py-2">{row.confirmed}</td>
+                <td className="px-3 py-2">{row.review}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ClusterScatter({ fit }: { fit: ClusterFit }) {
+  const width = 640;
+  const height = 360;
+  const pad = 16;
+  const xs = fit.pca.map((point) => point.x);
+  const ys = fit.pca.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const sx = (value: number) => pad + ((value - minX) / (maxX - minX || 1)) * (width - pad * 2);
+  const sy = (value: number) => height - pad - ((value - minY) / (maxY - minY || 1)) * (height - pad * 2);
+  return (
+    <figure className="border border-border bg-card px-4 py-4" data-testid="cluster-scatter">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label="PCA scatter by cluster">
+        {fit.pca.map((point) => (
+          <circle
+            key={point.hitId}
+            cx={sx(point.x)}
+            cy={sy(point.y)}
+            r={3.2}
+            fill={CLUSTER_COLOURS[point.cluster % CLUSTER_COLOURS.length]}
+          >
+            <title>
+              {point.hitId} cluster {point.cluster}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <figcaption className="mt-2 flex flex-wrap gap-3 text-xs">
+        {fit.clusters.map((cluster) => (
+          <span key={cluster.id} className="inline-flex items-center gap-1">
+            <span
+              className="inline-block h-2 w-2"
+              style={{ background: CLUSTER_COLOURS[cluster.id % CLUSTER_COLOURS.length] }}
+            />
+            {cluster.id} {cluster.label}
+          </span>
+        ))}
+      </figcaption>
+    </figure>
   );
 }
 

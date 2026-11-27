@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { payloadFromDevJsonl } from "../scripts/demo-pack.mjs";
+import { measureRecordedRun, payloadFromDevJsonl } from "../scripts/demo-pack.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -26,4 +26,16 @@ test("the public pack keeps recorded decisions and the compared names", async ()
   assert.equal(cleared.decision, "DIFFERENT_ENTITY");
   assert.equal(cleared.closeness, null);
   assert.equal(cleared.comparison?.name.status, "different");
+});
+
+test("measured cost figures come from the recorded lines and do not invent a score", async () => {
+  const text = await readFile(path.join(repoRoot, "output", "dev.jsonl"), "utf8");
+  const measured = measureRecordedRun(text);
+  assert.equal(measured.hits, 819);
+  assert.equal(measured.decisions.different + measured.decisions.same + measured.decisions.review, 819);
+  assert.equal(measured.labelsPresent, false);
+  assert.equal(measured.resolverSeconds, null);
+  assert.equal(measured.inputTokensMean, Math.round(measured.charsMean / 4));
+  assert.ok(measured.reasonTokensMean > 0);
+  assert.ok(measured.reasonCodes.some((item) => item.code === "INSUFFICIENT_DATA" && item.count > 0));
 });

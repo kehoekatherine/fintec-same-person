@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { DeskView } from "@/lib/desk-view";
 
 const VIEWS: { id: DeskView; label: string }[] = [
-  { id: "queue", label: "Queue" },
+  { id: "about", label: "About" },
   { id: "analysis", label: "Case analysis" },
   { id: "cost", label: "Model cost" },
 ];

@@ -13,7 +13,6 @@ import { reasonLabel } from "@/lib/labels";
 
 const SECTIONS: { id: CostSection; label: string }[] = [
   { id: "models", label: "Language models" },
-  { id: "classical", label: "Classical models" },
   { id: "risk", label: "Risk" },
 ];
 
@@ -61,7 +60,6 @@ export function ModelCost({
         </p>
       ) : null}
       {measured.status === "ready" && section === "models" ? <LanguageModels run={measured.run} /> : null}
-      {section === "classical" ? <ClassicalModels /> : null}
       {measured.status === "ready" && section === "risk" ? <Risk run={measured.run} /> : null}
     </div>
   );
@@ -236,22 +234,6 @@ function LanguageModels({ run }: { run: MeasuredRun }) {
           </li>
         ))}
       </ol>
-    </section>
-  );
-}
-
-function ClassicalModels() {
-  return (
-    <section data-testid="cost-classical" className="border border-border bg-card px-5 py-5">
-      <h3 className="font-heading text-xl">Classical models</h3>
-      <p className="mt-2 max-w-3xl text-sm leading-6">
-        Not run. No logistic regression, tree, naive Bayes, nearest neighbour, or network was trained on this
-        screening run. There is no accuracy, macro F1, fitness, or unsafe-clearance number for a classical model.
-      </p>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-        The alert-triage desk trained those models because it had a hand-labelled sample. This repository has no label
-        file, so that comparison is not repeated with invented scores.
-      </p>
     </section>
   );
 }

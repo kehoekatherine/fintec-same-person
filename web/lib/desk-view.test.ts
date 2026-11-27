@@ -2,17 +2,29 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { caseUsd } from "./model-prices.ts";
-import { costSection, deskView } from "./desk-view.ts";
+import { costSection, deskView, legacyAddress } from "./desk-view.ts";
 
-test("view and cost section read the address the alerts desk uses", () => {
-  assert.equal(deskView(null), "queue");
+test("about is the page with no view, and a bare hit opens analysis", () => {
+  assert.equal(deskView(null), "about");
+  assert.equal(deskView("about"), "about");
+  assert.equal(deskView("summary"), "about");
+  assert.equal(deskView(null, "H-E319FE"), "analysis");
+  assert.equal(deskView("queue", "H-E319FE"), "analysis");
+  assert.equal(deskView("queue"), "about");
   assert.equal(deskView("analysis"), "analysis");
   assert.equal(deskView("case"), "analysis");
   assert.equal(deskView("cost"), "cost");
+});
+
+test("a removed cost section falls back to language models", () => {
   assert.equal(costSection(null), "models");
-  assert.equal(costSection("classical"), "classical");
-  assert.equal(costSection("ml"), "classical");
+  assert.equal(costSection("classical"), "models");
+  assert.equal(costSection("ml"), "models");
   assert.equal(costSection("risk"), "risk");
+  assert.deepEqual(legacyAddress(null, null, "H-1"), { view: "analysis" });
+  assert.deepEqual(legacyAddress("queue", null, null), { view: null, hit: null, section: null });
+  assert.deepEqual(legacyAddress("cost", "classical", null), { section: null });
+  assert.equal(legacyAddress("cost", "risk", null), null);
 });
 
 test("a model price is input tokens plus output tokens, with no accuracy attached", () => {

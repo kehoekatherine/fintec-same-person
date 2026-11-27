@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { DECISION_BADGE } from "@/components/decision-style";
 import { Badge } from "@/components/ui/badge";
 import { DECISION_LABEL } from "@/lib/labels";
-import { isMeasuredRun, type MeasuredRun } from "@/lib/measured-run";
-import { publicUrl } from "@/lib/public-base";
 import type { ResultRow } from "@/lib/types";
 import { cn } from "cn";
 
 export function AboutDesk({ rows, onHit }: { rows: ResultRow[]; onHit: (hitId: string) => void }) {
-  const measured = useCostFile();
-  const run = measured.status === "ready" ? measured.run : null;
-  const total = run ? run.decisions.different + run.decisions.same + run.decisions.review : 0;
+  const workload = useMemo(() => tally(rows), [rows]);
+  const total = workload.cleared + workload.confirmed + workload.review;
 
   return (
     <div data-testid="view-about" className="grid gap-4">
@@ -21,28 +18,30 @@ export function AboutDesk({ rows, onHit }: { rows: ResultRow[]; onHit: (hitId: s
         <p className="text-xs font-medium tracking-[0.14em] text-muted-foreground uppercase">Watchlist Screening Desk</p>
         <h2 className="font-heading text-3xl">Hits on this run</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Decision mix for the recorded run in output/dev.jsonl. These counts are workload, not an official score.
-          There is no label file, so this is not fitness or accuracy.
+          Combined outcome for output/dev.jsonl: the rules decision, with a k-means disagreement sent to review.
+          These counts are workload, not an official score. There is no label file, so this is not fitness or accuracy.
         </p>
       </div>
-      {run && total > 0 ? (
+      {total > 0 ? (
         <>
           <div className="flex h-3 overflow-hidden border border-border" aria-hidden="true">
-            <span className="bg-clear" style={{ width: `${(run.decisions.different / total) * 100}%` }} />
-            <span className="bg-confirm" style={{ width: `${(run.decisions.same / total) * 100}%` }} />
-            <span className="bg-review" style={{ width: `${(run.decisions.review / total) * 100}%` }} />
+            <span className="bg-clear" style={{ width: `${(workload.cleared / total) * 100}%` }} />
+            <span className="bg-confirm" style={{ width: `${(workload.confirmed / total) * 100}%` }} />
+            <span className="bg-review" style={{ width: `${(workload.review / total) * 100}%` }} />
           </div>
           <dl className="grid gap-3 sm:grid-cols-4" data-testid="about-counts">
-            <Count value={String(run.hits)} label="Hits" />
-            <Count value={String(run.decisions.different)} label="Clear" />
-            <Count value={String(run.decisions.same)} label="Confirm" />
-            <Count value={String(run.decisions.review)} label="Review" />
+            <Count value={String(total)} label="Hits" />
+            <Count value={String(workload.cleared)} label="Clear" />
+            <Count value={String(workload.confirmed)} label="Confirm" />
+            <Count value={String(workload.review)} label="Review" />
           </dl>
+          <p className="text-sm text-muted-foreground" data-testid="about-raw-rules">
+            Raw rules: {workload.rawCleared} cleared, {workload.rawConfirmed} confirmed, {workload.rawReview} review.{" "}
+            {workload.moved} disagreements were sent to review.
+          </p>
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">
-          {measured.status === "error" ? "The recorded counts could not be read." : "Reading the recorded run…"}
-        </p>
+        <p className="text-sm text-muted-foreground">Reading the recorded run…</p>
       )}
       <ul className="grid max-h-72 gap-1 overflow-auto" aria-label="Hits on this run">
         {rows.map((row) => (
@@ -58,6 +57,9 @@ export function AboutDesk({ rows, onHit }: { rows: ResultRow[]; onHit: (hitId: s
               <Badge variant="outline" className={cn("h-5", DECISION_BADGE[row.decision])}>
                 {DECISION_LABEL[row.decision]}
               </Badge>
+              {row.escalationNote ? (
+                <span className="text-xs text-muted-foreground">{row.escalationNote}</span>
+              ) : null}
             </button>
           </li>
         ))}
@@ -206,29 +208,27 @@ function Count({ value, label }: { value: string; label: string }) {
   );
 }
 
-function useCostFile(): { status: "loading" | "error" } | { status: "ready"; run: MeasuredRun } {
-  const [state, setState] = useState<{ status: "loading" | "error" } | { status: "ready"; run: MeasuredRun }>({
-    status: "loading",
-  });
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch(publicUrl("/demo/cost.json"), { cache: "no-store" });
-        const body = (await response.json()) as unknown;
-        if (cancelled) return;
-        if (!response.ok || !isMeasuredRun(body)) {
-          setState({ status: "error" });
-          return;
-        }
-        setState({ status: "ready", run: body });
-      } catch {
-        if (!cancelled) setState({ status: "error" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return state;
+function tally(rows: readonly ResultRow[]) {
+  const counts = { cleared: 0, confirmed: 0, review: 0, rawCleared: 0, rawConfirmed: 0, rawReview: 0, moved: 0 };
+  for (const row of rows) {
+    add(counts, row.decision, false);
+    add(counts, row.rulesDecision ?? row.decision, true);
+    if (row.escalatedToReview) counts.moved += 1;
+  }
+  return counts;
+}
+
+function add(
+  counts: { cleared: number; confirmed: number; review: number; rawCleared: number; rawConfirmed: number; rawReview: number },
+  decision: ResultRow["decision"],
+  raw: boolean,
+) {
+  if (decision === "DIFFERENT_ENTITY") {
+    if (raw) counts.rawCleared += 1;
+    else counts.cleared += 1;
+  } else if (decision === "SAME_ENTITY") {
+    if (raw) counts.rawConfirmed += 1;
+    else counts.confirmed += 1;
+  } else if (raw) counts.rawReview += 1;
+  else counts.review += 1;
 }

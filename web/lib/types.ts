@@ -127,7 +127,13 @@ export type PracticeLabel = {
 export type ResultRow = {
   hitId: string;
   alertId: string;
+  /** Combined outcome. A k-means disagreement is review. The raw rules decision is `rulesDecision`. */
   decision: Decision;
+  /** The rules engine decision, kept when the combined outcome sends the hit to review. */
+  rulesDecision?: Decision;
+  escalatedToReview?: boolean;
+  /** Secondary line, for example "Rules: cleared → escalated to review (k-means disagreement)". */
+  escalationNote?: string | null;
   reasonCode: string;
   customerRecordId: string | null;
   /** True when this id is a row in the development customers.jsonl. False when that file was checked and the id is absent. */
